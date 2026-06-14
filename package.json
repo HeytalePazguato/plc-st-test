@@ -1,0 +1,62 @@
+{
+  "name": "plc-st-test",
+  "version": "0.0.0",
+  "description": "Unit test runner for IEC 61131-3 Structured Text. No PLC runtime, no license, no Windows required. Cyclic execution model, simulated timers and I/O. JUnit XML output for CI.",
+  "type": "module",
+  "license": "MIT",
+  "author": "HeytalePazguato",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HeytalePazguato/plc-st-test.git"
+  },
+  "keywords": [
+    "iec-61131-3",
+    "structured-text",
+    "plc",
+    "unit-testing",
+    "test-runner",
+    "industrial-automation",
+    "twincat",
+    "codesys"
+  ],
+  "bin": {
+    "plc-st-test": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "tree-sitter-iec61131-3-st": "^0.1.1",
+    "web-tree-sitter": "^0.26.0",
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.9.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^2.0.0"
+  },
+  "packageManager": "pnpm@11.6.0"
+}

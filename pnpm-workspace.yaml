@@ -1,0 +1,12 @@
+# pnpm 11 reads settings from this file (the "pnpm" field in package.json is no
+# longer honored — https://pnpm.io/settings). This is NOT a monorepo workspace:
+# plc-st-test is a single package; the dialect plugins, simulators, and HIL
+# bridge live in their own repositories. There is deliberately no `packages:` key.
+#
+# Build-script decisions:
+#   esbuild (used by vitest) — allowed to build.
+#   tree-sitter-iec61131-3-st — declined; we load its prebuilt .wasm via
+#     web-tree-sitter and never use the native node-gyp binding.
+allowBuilds:
+  esbuild: true
+  tree-sitter-iec61131-3-st: false

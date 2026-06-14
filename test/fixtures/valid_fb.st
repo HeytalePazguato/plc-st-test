@@ -1,0 +1,6 @@
+FUNCTION_BLOCK FB_A
+VAR
+    x : INT;
+END_VAR
+    x := 1;
+END_FUNCTION_BLOCK

@@ -1,0 +1,8 @@
+FUNCTION_BLOCK FB_C
+VAR
+    x : INT;
+END_VAR
+    IF x > 0 THEN
+        x := x + 1
+    END_IF;
+END_FUNCTION_BLOCK
