@@ -10,3 +10,5 @@
 allowBuilds:
   esbuild: true
   tree-sitter-iec61131-3-st: false
+minimumReleaseAgeExclude:
+  - tree-sitter-iec61131-3-st@0.1.2

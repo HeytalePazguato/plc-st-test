@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "commander": "^12.1.0",
-    "tree-sitter-iec61131-3-st": "^0.1.1",
+    "tree-sitter-iec61131-3-st": "^0.1.2",
     "web-tree-sitter": "^0.26.0",
     "yaml": "^2.5.0"
   },

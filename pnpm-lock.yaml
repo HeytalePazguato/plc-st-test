@@ -12,8 +12,8 @@ importers:
         specifier: ^12.1.0
         version: 12.1.0
       tree-sitter-iec61131-3-st:
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: ^0.1.2
+        version: 0.1.2
       web-tree-sitter:
         specifier: ^0.26.0
         version: 0.26.9
@@ -884,8 +884,8 @@ packages:
     resolution: {integrity: sha512-n1cw8k1k0x4pgA2+9XrOkFydTerNcJ1zWCO5Nn9scWHTD+5tp8dghT2x1uduQePZTZgd3Tupf+x9BxJjeJi77Q==}
     engines: {node: '>=14.0.0'}
 
-  tree-sitter-iec61131-3-st@0.1.1:
-    resolution: {integrity: sha512-adH71leEL0jH477yAtnxH0GT00+8pipAFlegTF0xC9/ZOEtQG3n+ipKilvgfDY5NAxvVavIrJe1atWaci5h0nA==}
+  tree-sitter-iec61131-3-st@0.1.2:
+    resolution: {integrity: sha512-1SXKmvNhJAPRMduqEgq+EwQP7IsbGFNp8ZDMQ83jjCoW71vOCYG4rL3v8G8QzxQ+fKAgaKLyUpzGR4JIvz8u8Q==}
     peerDependencies:
       tree-sitter: ^0.25.0
     peerDependenciesMeta:
@@ -1755,7 +1755,7 @@ snapshots:
 
   tinyspy@3.0.2: {}
 
-  tree-sitter-iec61131-3-st@0.1.1:
+  tree-sitter-iec61131-3-st@0.1.2:
     dependencies:
       node-addon-api: 8.8.0
       node-gyp-build: 4.8.4

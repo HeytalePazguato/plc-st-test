@@ -42,22 +42,31 @@ describe('parser', () => {
     expect(parsed.filePath).toBe('valid_fb.st')
   })
 
-  it('reports a diagnostic for a missing END_IF', () => {
+  it('reports a localized MISSING END_IF for an unterminated IF', () => {
     const src = fixture('missing_endif.st')
     const parsed = parseSource(src, 'missing_endif.st')
     expect(parsed.diagnostics.length).toBeGreaterThanOrEqual(1)
-    // This grammar recovers from a missing END_IF coarsely: it wraps the whole
-    // function block in a single top-level ERROR node that starts at the FB
-    // declaration (line 1, col 1). So the "correct" reported line is 1 here.
-    const first = parsed.diagnostics[0]
-    expect(first.file).toBe('missing_endif.st')
-    expect(first.line).toBe(1)
-    expect(first.col).toBe(1)
-    expect(first.message).toMatch(/Syntax error/)
+    // grammar >=0.1.2 reserves the END_* terminators via an external scanner, so
+    // a forgotten END_IF no longer collapses the whole FB into a line-1 ERROR.
+    // The parser keeps the function_block_declaration + if_statement and emits a
+    // precise MISSING "END_IF" node where the terminator was expected (just
+    // before END_FUNCTION_BLOCK, end of the last statement: line 6, col 20).
+    const missing = parsed.diagnostics.find((d: Diagnostic) =>
+      d.message === 'Missing END_IF',
+    )
+    expect(missing).toBeDefined()
+    expect(missing?.file).toBe('missing_endif.st')
+    expect(missing?.line).toBe(6)
+    expect(missing?.col).toBe(20)
     for (const d of parsed.diagnostics) {
       expect(d.line).toBeGreaterThanOrEqual(1)
       expect(d.col).toBeGreaterThanOrEqual(1)
     }
+    // The FB and IF survive recovery (no POU-wide ERROR collapse).
+    const types = new Set<string>()
+    walk(parsed.tree.rootNode, (n) => void types.add(n.type))
+    expect(types.has('function_block_declaration')).toBe(true)
+    expect(types.has('if_statement')).toBe(true)
   })
 
   it('reports a MISSING-node diagnostic with a precise 1-based line/col', () => {
