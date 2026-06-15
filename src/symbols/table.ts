@@ -145,6 +145,17 @@ export class SymbolTable implements TypeResolver {
     return this.caseSensitive ? name : name.toLowerCase()
   }
 
+  /** Public case-folding so collaborators (e.g. the scope chain in task 2.1)
+   *  resolve identifiers with the SAME case-mode as this table. */
+  normalizeKey(name: string): string {
+    return this.key(name)
+  }
+
+  /** Whether identifiers are treated case-sensitively (e.g. the B&R dialect). */
+  get isCaseSensitive(): boolean {
+    return this.caseSensitive
+  }
+
   // --- TypeResolver -------------------------------------------------------
 
   resolveType(name: string): ResolvedType | undefined {
