@@ -1,13 +1,9 @@
 /**
  * Cross-file symbol table for IEC 61131-3 Structured Text.
  *
- * `buildSymbolTable` collects POUs (functions, function blocks, programs,
- * interfaces), their VAR blocks and methods, and TYPE declarations (enums,
- * structs, aliases) across every parsed file, then resolves named references
- * (including FB-typed instances and enum members) across file boundaries.
+ * `buildSymbolTable` collects POUs (functions, function blocks, programs, interfaces), their VAR blocks and methods, and TYPE declarations (enums, structs, aliases) across every parsed file, then resolves named references (including FB-typed instances and enum members) across file boundaries.
  *
- * The table implements `TypeResolver` from the value model so the interpreter
- * can build default values for user-defined types without a circular import.
+ * The table implements `TypeResolver` from the value model so the interpreter can build default values for user-defined types without a circular import.
  */
 
 import type { Node } from 'web-tree-sitter'
@@ -145,8 +141,7 @@ export class SymbolTable implements TypeResolver {
     return this.caseSensitive ? name : name.toLowerCase()
   }
 
-  /** Public case-folding so collaborators (e.g. the scope chain in task 2.1)
-   *  resolve identifiers with the SAME case-mode as this table. */
+  /** Public case-folding so collaborators (e.g. the scope chain in task 2.1) resolve identifiers with the SAME case-mode as this table. */
   normalizeKey(name: string): string {
     return this.key(name)
   }

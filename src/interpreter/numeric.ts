@@ -1,15 +1,11 @@
 /**
  * IEC 61131-3 numeric fidelity.
  *
- * JavaScript numbers are IEEE-754 doubles, but PLC numerics have fixed bit
- * widths, signedness, and two's-complement wrap-around. This module enforces
- * that fidelity so that, e.g., `SINT` 127 + 1 yields -128 rather than 128, and
- * `REAL` arithmetic is rounded to 32-bit precision.
+ * JavaScript numbers are IEEE-754 doubles, but PLC numerics have fixed bit widths, signedness, and two's-complement wrap-around. This module enforces that fidelity so that, e.g., `SINT` 127 + 1 yields -128 rather than 128, and `REAL` arithmetic is rounded to 32-bit precision.
  *
  * Representation rule:
  *   - Types up to 32 bits are represented as JS `number` (safe-integer range).
- *   - 64-bit types (LINT/ULINT/LWORD) exceed the safe-integer range and are
- *     represented as `bigint`.
+ *   - 64-bit types (LINT/ULINT/LWORD) exceed the safe-integer range and are represented as `bigint`.
  */
 
 import { IecRuntimeError } from '../errors.js'
@@ -81,10 +77,7 @@ function metaOf(t: IecType): IntMeta {
 /**
  * Exact two's-complement wrap of `v` into the bit width of type `t`.
  *
- * For ≤32-bit types the work is done in `number` (manual modulo on the 2^width
- * ring, then mapped into the signed or unsigned range). For 64-bit types it is
- * done in `bigint` via BigInt.asIntN / asUintN. The returned representation
- * matches the type (number for ≤32-bit, bigint for 64-bit).
+ * For ≤32-bit types the work is done in `number` (manual modulo on the 2^width ring, then mapped into the signed or unsigned range). For 64-bit types it is done in `bigint` via BigInt.asIntN / asUintN. The returned representation matches the type (number for ≤32-bit, bigint for 64-bit).
  */
 export function wrapInt(v: number | bigint, t: IecType): number | bigint {
   const { bits, signed } = metaOf(t)
@@ -117,11 +110,8 @@ export function froundReal(n: number): number {
  *
  * Rule: assign each numeric type a rank; the wider (higher rank) type wins.
  *   - Any mix involving a float widens to the float: REAL < LREAL beats all ints.
- *   - Integer ranks follow bit width: 8 < 16 < 32 < 64, with the unsigned
- *     analogue sharing the rank of its signed sibling at the same width, and
- *     bit-string types ranked by their width as well.
- *   - When two operands have the same rank the first operand's type is kept
- *     (callers that need a specific signedness/representation can override).
+ *   - Integer ranks follow bit width: 8 < 16 < 32 < 64, with the unsigned analogue sharing the rank of its signed sibling at the same width, and bit-string types ranked by their width as well.
+ *   - When two operands have the same rank the first operand's type is kept (callers that need a specific signedness/representation can override).
  * Non-numeric types (BOOL/TIME/STRING/WSTRING) are not widened here.
  */
 export function widen(ta: IecType, tb: IecType): IecType {

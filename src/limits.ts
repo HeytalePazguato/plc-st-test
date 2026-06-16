@@ -1,9 +1,7 @@
 /**
  * Execution limits that guard the interpreter against runaway code.
  *
- * These defaults are used until the config loader (task 4.5) parses
- * `plc-st-test.config.yml` and supplies real values; 4.5 produces this same
- * `Limits` shape. Values mirror the `limits:` block in the spec's config example.
+ * These defaults are used until the config loader (task 4.5) parses `plc-st-test.config.yml` and supplies real values; 4.5 produces this same `Limits` shape. Values mirror the `limits:` block in the spec's config example.
  */
 export interface Limits {
   maxRecursionDepth: number

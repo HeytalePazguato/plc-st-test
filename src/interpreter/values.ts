@@ -1,12 +1,7 @@
 /**
  * Runtime value model for the IEC 61131-3 interpreter.
  *
- * A value is one of four shapes: a scalar (elementary type), an array, a
- * struct, or an enum. `defaultValue` walks a grammar type-specifier node and
- * produces the IEC initial value for it (honouring a declared initializer when
- * the surrounding declaration carries one). The `TypeResolver` interface is
- * declared here — rather than imported from the symbol table — so the symbol
- * table can implement it without creating a circular import.
+ * A value is one of four shapes: a scalar (elementary type), an array, a struct, or an enum. `defaultValue` walks a grammar type-specifier node and produces the IEC initial value for it (honouring a declared initializer when the surrounding declaration carries one). The `TypeResolver` interface is declared here — rather than imported from the symbol table — so the symbol table can implement it without creating a circular import.
  */
 
 import type { Node } from 'web-tree-sitter'
@@ -58,9 +53,7 @@ export interface TypeResolver {
 // ---------------------------------------------------------------------------
 
 /**
- * Map every `elementary_type` keyword the grammar can emit onto an `IecType`.
- * The date/time family folds onto TIME and CHAR/WCHAR onto STRING/WSTRING since
- * those distinct elementary types are not modelled separately yet.
+ * Map every `elementary_type` keyword the grammar can emit onto an `IecType`. The date/time family folds onto TIME and CHAR/WCHAR onto STRING/WSTRING since those distinct elementary types are not modelled separately yet.
  */
 const ELEMENTARY: Record<string, IecType> = {
   BOOL: IecType.BOOL,
@@ -188,10 +181,7 @@ function scalarDefault(type: IecType): number | bigint | boolean | string {
 // ---------------------------------------------------------------------------
 
 /**
- * Find an initializer expression attached to the declaration that owns
- * `typeNode`. The grammar names it `initial_value` on a variable_declaration
- * and `default` on a structure_field / type_definition; in all cases it is a
- * sibling field of the type specifier, not a child of it.
+ * Find an initializer expression attached to the declaration that owns `typeNode`. The grammar names it `initial_value` on a variable_declaration and `default` on a structure_field / type_definition; in all cases it is a sibling field of the type specifier, not a child of it.
  */
 function findInitializer(typeNode: Node): Node | undefined {
   const parent = typeNode.parent
@@ -204,9 +194,7 @@ function findInitializer(typeNode: Node): Node | undefined {
 }
 
 /**
- * Produce the IEC initial value for the type that `typeNode` describes. If the
- * owning declaration carries an initializer it is honoured, otherwise the IEC
- * default for the type is used. Named types are looked up through `resolver`.
+ * Produce the IEC initial value for the type that `typeNode` describes. If the owning declaration carries an initializer it is honoured, otherwise the IEC default for the type is used. Named types are looked up through `resolver`.
  */
 export function defaultValue(typeNode: Node, resolver: TypeResolver): IecValue {
   return buildDefault(typeNode, findInitializer(typeNode), resolver)
@@ -368,8 +356,7 @@ function namedDefault(
     const value = enumDefaultValue(resolved, initNode)
     return { kind: 'enum', typeName: resolved.typeName, value }
   }
-  // alias: recurse on the aliased type. The variable's own initializer (if any)
-  // wins over the alias's declared default.
+  // alias: recurse on the aliased type. The variable's own initializer (if any) wins over the alias's declared default.
   return buildDefault(resolved.typeNode, initNode ?? resolved.initNode, resolver)
 }
 

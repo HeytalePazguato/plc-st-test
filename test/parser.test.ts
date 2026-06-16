@@ -23,9 +23,7 @@ describe('parser', () => {
   })
 
   it('initParser is idempotent and parseSource works afterwards', async () => {
-    // Calling init again must resolve and must NOT re-initialise (the impl
-    // caches a single promise). We can only observe that subsequent awaits
-    // resolve and that parsing still works.
+    // Calling init again must resolve and must NOT re-initialise (the impl caches a single promise). We can only observe that subsequent awaits resolve and that parsing still works.
     await initParser()
     await initParser()
     const parsed = parseSource(VALID_INLINE, 'inline.st')
@@ -46,11 +44,7 @@ describe('parser', () => {
     const src = fixture('missing_endif.st')
     const parsed = parseSource(src, 'missing_endif.st')
     expect(parsed.diagnostics.length).toBeGreaterThanOrEqual(1)
-    // grammar >=0.1.2 reserves the END_* terminators via an external scanner, so
-    // a forgotten END_IF no longer collapses the whole FB into a line-1 ERROR.
-    // The parser keeps the function_block_declaration + if_statement and emits a
-    // precise MISSING "END_IF" node where the terminator was expected (just
-    // before END_FUNCTION_BLOCK, end of the last statement: line 6, col 20).
+    // grammar >=0.1.2 reserves the END_* terminators via an external scanner, so a forgotten END_IF no longer collapses the whole FB into a line-1 ERROR. The parser keeps the function_block_declaration + if_statement and emits a precise MISSING "END_IF" node where the terminator was expected (just before END_FUNCTION_BLOCK, end of the last statement: line 6, col 20).
     const missing = parsed.diagnostics.find((d: Diagnostic) =>
       d.message === 'Missing END_IF',
     )
@@ -77,8 +71,7 @@ describe('parser', () => {
       d.message.startsWith('Missing'),
     )
     expect(missing).toBeDefined()
-    // The semicolon is omitted after `x := x + 1` on line 6; the parser flags
-    // the missing ';' at end of that statement.
+    // The semicolon is omitted after `x := x + 1` on line 6; the parser flags the missing ';' at end of that statement.
     expect(missing?.line).toBe(6)
     expect(missing?.col).toBe(19)
     expect(missing?.message).toBe('Missing ;')

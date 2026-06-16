@@ -21,8 +21,7 @@ export class IecRuntimeError extends IecError {
   }
 }
 
-/** Raised when `RUN_UNTIL` exceeds its max-cycles budget without the condition
- *  becoming TRUE. */
+/** Raised when `RUN_UNTIL` exceeds its max-cycles budget without the condition becoming TRUE. */
 export class IecTimeoutError extends IecError {
   constructor(message?: string) {
     super(message)

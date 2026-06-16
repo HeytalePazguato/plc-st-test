@@ -20,9 +20,7 @@ let initPromise: Promise<void> | undefined
 let language: Language | undefined
 
 /**
- * Initialise web-tree-sitter and load the IEC 61131-3 ST grammar.
- * Idempotent: the underlying work runs at most once; repeated calls return
- * the same cached promise.
+ * Initialise web-tree-sitter and load the IEC 61131-3 ST grammar. Idempotent: the underlying work runs at most once; repeated calls return the same cached promise.
  */
 export async function initParser(): Promise<void> {
   if (initPromise === undefined) {
@@ -40,8 +38,7 @@ export async function initParser(): Promise<void> {
 }
 
 /**
- * Parse Structured Text source synchronously. `initParser()` must have been
- * awaited first; otherwise an Error is thrown.
+ * Parse Structured Text source synchronously. `initParser()` must have been awaited first; otherwise an Error is thrown.
  */
 export function parseSource(source: string, filePath: string): ParsedFile {
   if (language === undefined) {
@@ -64,8 +61,7 @@ export function parseSource(source: string, filePath: string): ParsedFile {
 }
 
 /**
- * Walk every node (including unnamed ERROR/MISSING nodes) collecting syntax
- * diagnostics. Uses the raw children so error recovery nodes are seen.
+ * Walk every node (including unnamed ERROR/MISSING nodes) collecting syntax diagnostics. Uses the raw children so error recovery nodes are seen.
  */
 function collectDiagnostics(
   node: Node,
@@ -93,9 +89,7 @@ function collectDiagnostics(
 }
 
 /**
- * Depth-first traversal visiting every named node exactly once. The visitor is
- * called on `node` itself (when named) before recursing into its named
- * children.
+ * Depth-first traversal visiting every named node exactly once. The visitor is called on `node` itself (when named) before recursing into its named children.
  */
 export function walk(node: Node, visitor: (node: Node) => void): void {
   if (node.isNamed) {
