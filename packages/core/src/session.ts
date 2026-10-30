@@ -11,6 +11,7 @@ import { IecLimitError } from './errors.js'
 import type { EvalContext } from './interpreter/context.js'
 import type { CycleEngine } from './interpreter/cycle.js'
 import type { FbInstance } from './interpreter/pou.js'
+import type { RowContext } from './runner/params.js'
 import { DEFAULT_LIMITS, type Limits } from './limits.js'
 
 /** Receives a hit for each taken branch id; ids come from the session's `branches`. */
@@ -112,6 +113,8 @@ export class Session {
   branches?: BranchMap
   /** The currently running test's engine, suite and context; undefined outside a test. */
   runtime?: TestRuntime
+  /** Set by the isolation runner while it runs one row of a `FOR_EACH_ROW` test. */
+  params?: RowContext
   readonly mocks: MockStore
   /** Scalar slots allocated by the current test so far (see `limits.maxAllocatedElements`). */
   allocation = 0

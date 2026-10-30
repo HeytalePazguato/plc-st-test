@@ -4,14 +4,16 @@
 
 import type { DialectHooks, SuiteDescriptor, SuiteResultV1, TestDescriptor, TestResultV1 } from '@plc-st/plugin-api'
 import type { OriginalLocation } from '@plc-st/project-model'
+import type { Node } from 'web-tree-sitter'
 import { registerAssertions } from '../assertions.js'
 import type { CoverageRun } from '../coverage/instrument.js'
 import { AssertionFailure, IecError, IecLimitError, IecTimeoutError } from '../errors.js'
 import { SimClock } from '../interpreter/clock.js'
 import { CycleEngine } from '../interpreter/cycle.js'
-import { createEvalContext, disposeFb, instantiateFb } from '../interpreter/pou.js'
+import { bodyStatements, createEvalContext, disposeFb, instantiateFb } from '../interpreter/pou.js'
 import { registerStdlib } from '../interpreter/stdlib/index.js'
 import { registerCycleFns } from './cyclefns.js'
+import { findForEachRow, registerParams, RowExpansion, type RowContext } from './params.js'
 import type { Limits } from '../limits.js'
 import { registerMockExpectations } from '../mock/expect.js'
 import { registerMock } from '../mock/mock.js'
@@ -35,7 +37,7 @@ export interface DefaultSessionOptions {
   coverage?: CoverageRun
 }
 
-/** A session factory registering the assertions (enum names resolved through the table), the IEC standard library, RUN_CYCLES / RUN_UNTIL, MOCK / MOCK_RETURNS and the EXPECT_* call expectations, and attaching the run's coverage to every session when there is one. */
+/** A session factory registering the assertions (enum names resolved through the table), the IEC standard library, RUN_CYCLES / RUN_UNTIL, MOCK / MOCK_RETURNS, the EXPECT_* call expectations and FOR_EACH_ROW / ROW, and attaching the run's coverage to every session when there is one. */
 export function defaultSessionFactory(opts: DefaultSessionOptions): () => Session {
   return () => {
     const session = new Session({ caseSensitive: opts.table.isCaseSensitive, limits: opts.limits })
@@ -45,6 +47,7 @@ export function defaultSessionFactory(opts: DefaultSessionOptions): () => Sessio
     registerMock(session)
     registerMockReturns(session)
     registerMockExpectations(session)
+    registerParams(session)
     if (opts.coverage !== undefined) {
       session.coverage = opts.coverage.sink
       session.branches = opts.coverage.branches
@@ -85,15 +88,31 @@ function attempt(step: () => void, location: OriginalLocation): Outcome | undefi
 interface TestRun {
   result: TestResultV1
   session: Session
+  /** Set when the test called `FOR_EACH_ROW` on a probe run; `result` is then meaningless. */
+  expansion?: RowExpansion
 }
 
-function runTest(desc: SuiteDescriptor, test: TestDescriptor, env: RunEnv): TestRun {
+/** The test's body statements as `invokeMethod`/`invokeAction` run them, with the id that identifies the body. */
+function testBody(desc: SuiteDescriptor, test: TestDescriptor, env: RunEnv): { bodyId: number | undefined; statements: Node[] } {
+  const pou = env.table.getPou(desc.suite)
+  const key = env.table.normalizeKey(test.name)
+  if (desc.kind === 'method') {
+    const node = pou?.methods.find((m) => env.table.normalizeKey(m.name) === key)?.bodyNode
+    return { bodyId: node?.id, statements: bodyStatements(node) }
+  }
+  const nodes = pou?.actions.find((a) => env.table.normalizeKey(a.name) === key)?.bodyNodes ?? []
+  return { bodyId: nodes[0]?.id, statements: nodes }
+}
+
+/** Runs one test; with `row`, the sub-test for that row of a `FOR_EACH_ROW` table. */
+function runTest(desc: SuiteDescriptor, test: TestDescriptor, env: RunEnv, row?: RowContext): TestRun {
   const started = performance.now()
   const session = env.sessionFactory()
   const ctx = createEvalContext({ symbols: env.table, session, hooks: env.hooks })
   const engine = new CycleEngine(new SimClock(), env.cycleTimeNs, session)
   ctx.clock = engine
 
+  let expansion: RowExpansion | undefined
   let outcome = attempt(() => {
     session.startDeadline()
     const suite = instantiateFb(desc.suite, ctx)
@@ -110,7 +129,15 @@ function runTest(desc: SuiteDescriptor, test: TestDescriptor, env: RunEnv): Test
       const setUp = desc.setUp
       outcome = attempt(() => call(setUp), test.location)
     }
-    if (outcome === undefined) outcome = attempt(() => call(test.name), test.location)
+    if (outcome === undefined) {
+      session.params = row
+      try {
+        call(test.name)
+      } catch (e) {
+        if (e instanceof RowExpansion) expansion = e
+        else outcome = classify(e, test.location)
+      }
+    }
     if (desc.tearDown !== undefined) {
       const tearDown = desc.tearDown
       // Evaluated eagerly: TearDown must run even when the test already failed.
@@ -121,15 +148,35 @@ function runTest(desc: SuiteDescriptor, test: TestDescriptor, env: RunEnv): Test
     outcome ??= disposed
   }
 
+  const name = row === undefined ? test.name : `${test.name}[${String(row.index)}]`
   const result: TestResultV1 = {
-    name: test.name,
-    fullName: `${desc.suite}.${test.name}`,
+    name,
+    fullName: `${desc.suite}.${name}`,
     status: outcome === undefined ? 'passed' : outcome.status,
     durationMs: performance.now() - started,
     location: test.location,
   }
   if (outcome !== undefined) result.failure = outcome.failure
-  return { result, session }
+  return { result, session, expansion }
+}
+
+/** Runs a test once, or once per row when it calls `FOR_EACH_ROW`; every row gets a fresh suite instance and reports as `Method[i]`. */
+function runWithRows(desc: SuiteDescriptor, test: TestDescriptor, env: RunEnv): TestRun[] {
+  const probe = runTest(desc, test, env)
+  const expansion = probe.expansion
+  if (expansion === undefined) return [probe]
+
+  const { bodyId, statements } = testBody(desc, test, env)
+  const at = findForEachRow(statements)
+  if (bodyId === undefined || at < 0) {
+    const message = 'FOR_EACH_ROW must be a top-level statement of the test'
+    return [{ ...probe, result: { ...probe.result, status: 'errored', failure: { kind: 'runtime', message, location: test.location } } }]
+  }
+  if (expansion.count === 0) {
+    const message = `FOR_EACH_ROW: '${expansion.table}' has no rows`
+    return [{ ...probe, result: { ...probe.result, status: 'errored', failure: { kind: 'runtime', message, location: test.location } } }]
+  }
+  return Array.from({ length: expansion.count }, (_, index) => runTest(desc, test, env, { bodyId, from: at + 1, table: expansion.table, index }))
 }
 
 export interface SuiteRun {
@@ -140,7 +187,7 @@ export interface SuiteRun {
 /** Runs every test of `desc` in isolation and also returns the per-test sessions (for their warnings). */
 export function runSuiteDetailed(desc: SuiteDescriptor, env: RunEnv): SuiteRun {
   const started = performance.now()
-  const runs = desc.tests.map((t) => runTest(desc, t, env))
+  const runs = desc.tests.flatMap((t) => runWithRows(desc, t, env))
   return {
     result: { name: desc.suite, location: desc.location, durationMs: performance.now() - started, tests: runs.map((r) => r.result) },
     sessions: runs.map((r) => r.session),

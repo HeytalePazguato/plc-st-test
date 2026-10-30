@@ -27,6 +27,7 @@ import { caseKey } from '../case.js'
 import { findAction, findMethod, findProperty, lineage, type Owned } from '../oop/inherit.js'
 import { boundInstance, fbInstanceOf, isInterfaceValue, linkInstance } from '../oop/interface.js'
 import { PropertySlot } from '../oop/property.js'
+import { resumeStatements } from '../runner/params.js'
 
 export { fbInstanceOf }
 
@@ -693,7 +694,7 @@ function recordedArgs(params: readonly Param[]): Record<string, IecValue> {
   return Object.fromEntries(bound.map((p) => [p.name, cloneValue(p.slot.value)]))
 }
 
-function bodyStatements(node: Node | undefined): Node[] {
+export function bodyStatements(node: Node | undefined): Node[] {
   return node === undefined ? [] : node.childrenForFieldName('body').filter((c) => c.isNamed && c.type !== 'comment')
 }
 
@@ -774,7 +775,7 @@ function invokeMethod(inst: FbInstance, found: Owned<Method>, args: CallArg[], c
   try {
     const outputs = bindArgs(frame.params, args, ctx, node, locNode, what)
     if (inst.intercept !== undefined) inst.intercept(method.name, recordedArgs(frame.params))
-    else runBody(bodyStatements(method.bodyNode), instanceContext(inst, ctx, depth, frame.scope, owner), method.bodyNode)
+    else runBody(resumeStatements(ctx.session, method.bodyNode?.id, bodyStatements(method.bodyNode)), instanceContext(inst, ctx, depth, frame.scope, owner), method.bodyNode)
     copyOutputs(outputs, ctx, locNode)
   } finally {
     disposeAll(frame.children, ctx)
@@ -789,7 +790,7 @@ function invokeAction(inst: FbInstance, found: Owned<Action>, args: CallArg[], c
   if (args.length > 0) throw error(ctx, node, `action '${what}' takes no arguments`)
   const depth = enter(ctx, node, what)
   if (inst.intercept !== undefined) inst.intercept(action.name, {})
-  else runBody(action.bodyNodes, instanceContext(inst, ctx, depth, undefined, owner), action.bodyNodes[0] as Node | undefined)
+  else runBody(resumeStatements(ctx.session, action.bodyNodes[0]?.id, action.bodyNodes), instanceContext(inst, ctx, depth, undefined, owner), action.bodyNodes[0] as Node | undefined)
   return undefined
 }
 
