@@ -15,12 +15,12 @@ import type { ClockView, EvalContext } from './context.js'
 import { Scope, ScopeChainImpl } from './scope.js'
 import { evalExpression, fail, isThis } from './expressions.js'
 import { execBody, storeValue } from './statements.js'
-import { cloneValue, defaultValue, elementaryType, type IecValue } from './values.js'
+import { chargeAllocation, cloneValue, defaultValue, elementaryType, type IecValue } from './values.js'
 import { IecType, isBigIntType } from './numeric.js'
 import type { Action, Method, Pou, SymbolTable, VarEntry } from '../symbols/table.js'
 import type { Session } from '../session.js'
 import type { Limits } from '../limits.js'
-import { IecError, IecRuntimeError } from '../errors.js'
+import { IecError, IecLimitError, IecRuntimeError } from '../errors.js'
 import { caseKey } from '../case.js'
 
 type StructValue = Extract<IecValue, { kind: 'struct' }>
@@ -451,7 +451,7 @@ function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children:
     children.push(inst)
     return inst.value
   }
-  const value = defaultValue(typeNode, ctx.symbols)
+  const value = defaultValue(typeNode, ctx.symbols, ctx.session)
   if (typeNode.type === 'array_type' && value.kind === 'array') {
     const elemNode = typeNode.childForFieldName('element_type')
     const elemFb = elemNode === null ? undefined : fbTypeOf(elemNode, ctx)
@@ -512,10 +512,12 @@ function instanceVars(pou: Pou, ctx: EvalContext): VarEntry[] {
 /** Default value of a stub variable from its `VarSpec` type string (`BOOL`, `TIME`, `STRING(80)`, an enum, a nested FB type). */
 function specValue(spec: VarSpec, ctx: EvalContext, depth: number, children: FbInstance[]): IecValue {
   if (spec.init !== undefined) return cloneValue(spec.init)
+  chargeAllocation(ctx.session, 1)
   const t = spec.type.trim()
   const str = /^(W?STRING)\s*(?:[([]\s*(\d+)\s*[)\]])?$/i.exec(t)
   if (str !== null) {
     const type = str[1].toUpperCase() === 'WSTRING' ? IecType.WSTRING : IecType.STRING
+    if (str[2] !== undefined && Number(str[2]) > ctx.limits.maxStringLength) throw new IecLimitError(`string length ${str[2]} exceeds max_string_length=${String(ctx.limits.maxStringLength)} (${t})`)
     return str[2] === undefined ? { kind: 'scalar', type, value: '' } : { kind: 'scalar', type, value: '', maxLength: Number(str[2]) }
   }
   const et = elementaryType(t)

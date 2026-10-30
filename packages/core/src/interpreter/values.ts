@@ -6,6 +6,8 @@
 
 import type { Node } from 'web-tree-sitter'
 import type { EnumTypeInfo, IecValue, TypeResolver } from '@plc-st/plugin-api'
+import { IecLimitError } from '../errors.js'
+import type { Limits } from '../limits.js'
 import { IecType, isBigIntType, froundReal } from './numeric.js'
 
 export type {
@@ -173,21 +175,41 @@ function findInitializer(typeNode: Node): Node | undefined {
 /**
  * Produce the IEC initial value for the type that `typeNode` describes. If the owning declaration carries an initializer it is honoured, otherwise the IEC default for the type is used. Named types are looked up through `resolver`.
  */
-export function defaultValue(typeNode: Node, resolver: TypeResolver): IecValue {
-  return buildDefault(typeNode, findInitializer(typeNode), resolver)
+export function defaultValue(typeNode: Node, resolver: TypeResolver, meter?: AllocationMeter): IecValue {
+  return buildDefault(typeNode, findInitializer(typeNode), resolver, meter)
+}
+
+/** Allocation accounting target; a `Session` satisfies it. Without a meter nothing is counted or limited. */
+export interface AllocationMeter {
+  allocation: number
+  readonly limits: Pick<Limits, 'maxAllocatedElements' | 'maxStringLength'>
+}
+
+function limitExceeded(meter: AllocationMeter, wanted: number): IecLimitError {
+  return new IecLimitError(`allocation limit exceeded: ${String(wanted)} scalar slots requested, ${String(meter.limits.maxAllocatedElements - meter.allocation)} remaining of max_allocated_elements=${String(meter.limits.maxAllocatedElements)}`)
+}
+
+/** Count `n` scalar slots against the meter, throwing before they are allocated when the limit would be exceeded. */
+export function chargeAllocation(meter: AllocationMeter | undefined, n: number): void {
+  if (meter === undefined) return
+  if (meter.allocation + n > meter.limits.maxAllocatedElements) throw limitExceeded(meter, n)
+  meter.allocation += n
 }
 
 function buildDefault(
   typeNode: Node,
   initNode: Node | undefined,
   resolver: TypeResolver,
+  meter?: AllocationMeter,
 ): IecValue {
   switch (typeNode.type) {
     case 'elementary_type': {
+      chargeAllocation(meter, 1)
       const type = elementaryToIecType(typeNode.text)
       return { kind: 'scalar', type, value: scalarValue(type, initNode) }
     }
     case 'subrange_type': {
+      chargeAllocation(meter, 1)
       // e.g. INT(0..100): the value carries the base elementary type.
       const base = typeNode.namedChildren.find(
         (c) => c.type === 'elementary_type',
@@ -196,23 +218,25 @@ function buildDefault(
       return { kind: 'scalar', type, value: scalarValue(type, initNode) }
     }
     case 'string_type':
-      return stringDefault(typeNode, initNode)
+      return stringDefault(typeNode, initNode, meter)
     case 'array_type':
-      return arrayDefault(typeNode, resolver)
+      return arrayDefault(typeNode, resolver, meter)
     case 'enumerated_type_inline':
+      chargeAllocation(meter, 1)
       return inlineEnumDefault(typeNode, '')
     case 'structure_type_inline':
-      return inlineStructDefault(typeNode, '', resolver)
+      return inlineStructDefault(typeNode, '', resolver, meter)
     case 'identifier':
     case 'qualified_identifier':
-      return namedDefault(typeNode.text, initNode, resolver)
+      return namedDefault(typeNode.text, initNode, resolver, meter)
     default:
       // Unknown specifier (pointer/reference/generic): use an opaque struct.
+      chargeAllocation(meter, 1)
       return { kind: 'struct', typeName: typeNode.text, fields: new Map() }
   }
 }
 
-function stringDefault(typeNode: Node, initNode: Node | undefined): IecValue {
+function stringDefault(typeNode: Node, initNode: Node | undefined, meter?: AllocationMeter): IecValue {
   const type = typeNode.text.toUpperCase().startsWith('WSTRING')
     ? IecType.WSTRING
     : IecType.STRING
@@ -221,6 +245,10 @@ function stringDefault(typeNode: Node, initNode: Node | undefined): IecValue {
     lengthNode !== null
       ? Number(evalIntLiteral(lengthNode.text, false))
       : undefined
+  if (meter !== undefined && maxLen !== undefined && maxLen > meter.limits.maxStringLength) {
+    throw new IecLimitError(`string length ${String(maxLen)} exceeds max_string_length=${String(meter.limits.maxStringLength)} (${typeNode.text})`)
+  }
+  chargeAllocation(meter, 1)
   let value = ''
   if (initNode !== undefined && initNode.type === 'string_literal') {
     value = stringLiteralText(initNode.text)
@@ -243,7 +271,7 @@ function elemTypeOf(node: Node): IecType | string {
   return node.text
 }
 
-function arrayDefault(typeNode: Node, resolver: TypeResolver): IecValue {
+function arrayDefault(typeNode: Node, resolver: TypeResolver, meter?: AllocationMeter): IecValue {
   const ranges = typeNode.childrenForFieldName('range')
   const dims: [number, number][] = []
   let total = 1
@@ -258,13 +286,20 @@ function arrayDefault(typeNode: Node, resolver: TypeResolver): IecValue {
   const elemNode = typeNode.childForFieldName('element_type')
   const elemType = elemNode ? elemTypeOf(elemNode) : IecType.INT
   const data: IecValue[] = []
-  for (let i = 0; i < total; i++) {
-    data.push(
-      elemNode
-        ? buildDefault(elemNode, undefined, resolver)
-        : { kind: 'scalar', type: IecType.INT, value: 0 },
-    )
+  if (total === 0) return { kind: 'array', elemType, dims, data }
+  const build = (): IecValue => (elemNode ? buildDefault(elemNode, undefined, resolver) : { kind: 'scalar', type: IecType.INT, value: 0 })
+  if (meter === undefined) {
+    for (let i = 0; i < total; i++) data.push(build())
+    return { kind: 'array', elemType, dims, data }
   }
+  // Build one element first (it charges its own slots), then check the remaining elements against the limit BEFORE building them, so a huge array is rejected without being allocated. The rest are built unmetered because their slots are charged here in bulk.
+  const before = meter.allocation
+  data.push(elemNode ? buildDefault(elemNode, undefined, resolver, meter) : build())
+  const perElement = Math.max(1, meter.allocation - before)
+  const rest = (total - 1) * perElement
+  if (meter.allocation + rest > meter.limits.maxAllocatedElements) throw limitExceeded(meter, total * perElement)
+  meter.allocation += rest
+  for (let i = 1; i < total; i++) data.push(build())
   return { kind: 'array', elemType, dims, data }
 }
 
@@ -290,7 +325,9 @@ function inlineStructDefault(
   typeNode: Node,
   typeName: string,
   resolver: TypeResolver,
+  meter?: AllocationMeter,
 ): IecValue {
+  chargeAllocation(meter, 1)
   const fields = new Map<string, IecValue>()
   for (const f of typeNode.namedChildren) {
     if (f.type !== 'structure_field') continue
@@ -298,7 +335,7 @@ function inlineStructDefault(
     const fieldTypeNode = f.childForFieldName('type')
     if (nameNode === null || fieldTypeNode === null) continue
     const init = f.childForFieldName('default') ?? undefined
-    fields.set(nameNode.text, buildDefault(fieldTypeNode, init, resolver))
+    fields.set(nameNode.text, buildDefault(fieldTypeNode, init, resolver, meter))
   }
   return { kind: 'struct', typeName, fields }
 }
@@ -307,13 +344,16 @@ function namedDefault(
   name: string,
   initNode: Node | undefined,
   resolver: TypeResolver,
+  meter?: AllocationMeter,
 ): IecValue {
   const resolved = resolver.resolveType(name)
   if (resolved === undefined) {
+    chargeAllocation(meter, 1)
     // Unknown named type (e.g. an FB instance): opaque empty struct.
     return { kind: 'struct', typeName: name, fields: new Map() }
   }
   if (resolved.kind === 'struct') {
+    chargeAllocation(meter, 1)
     const fields = new Map<string, IecValue>()
     for (const f of resolved.fields) {
       fields.set(
@@ -322,17 +362,19 @@ function namedDefault(
           f.typeNode,
           f.initNode ?? findInitializer(f.typeNode),
           resolver,
+          meter,
         ),
       )
     }
     return { kind: 'struct', typeName: resolved.typeName, fields }
   }
   if (resolved.kind === 'enum') {
+    chargeAllocation(meter, 1)
     const value = enumDefaultValue(resolved, initNode)
     return { kind: 'enum', typeName: resolved.typeName, value }
   }
   // alias: recurse on the aliased type. The variable's own initializer (if any) wins over the alias's declared default.
-  return buildDefault(resolved.typeNode, initNode ?? resolved.initNode, resolver)
+  return buildDefault(resolved.typeNode, initNode ?? resolved.initNode, resolver, meter)
 }
 
 function enumDefaultValue(

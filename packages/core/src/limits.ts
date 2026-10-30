@@ -8,6 +8,10 @@ export interface Limits {
   maxLoopIterations: number
   maxCyclesPerTest: number
   maxExecutionTimeMs: number
+  /** Scalar slots (every scalar, enum or opaque struct counts 1) one test may allocate across all variables and instances. */
+  maxAllocatedElements: number
+  /** Longest STRING/WSTRING capacity a declaration may request. */
+  maxStringLength: number
 }
 
 export const DEFAULT_LIMITS: Limits = {
@@ -15,4 +19,6 @@ export const DEFAULT_LIMITS: Limits = {
   maxLoopIterations: 1_000_000,
   maxCyclesPerTest: 100_000,
   maxExecutionTimeMs: 30_000,
+  maxAllocatedElements: 10_000_000,
+  maxStringLength: 65_535,
 }

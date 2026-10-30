@@ -8,7 +8,7 @@ import { SimClock } from '../src/interpreter/clock.js'
 import { CycleEngine } from '../src/interpreter/cycle.js'
 import { Session } from '../src/session.js'
 import { DEFAULT_LIMITS, type Limits } from '../src/limits.js'
-import { IecRuntimeError, IecTimeoutError } from '../src/errors.js'
+import { IecLimitError, IecTimeoutError } from '../src/errors.js'
 
 let lang: Language
 
@@ -129,7 +129,7 @@ describe('CycleEngine', () => {
   it('enforces maxCyclesPerTest cumulatively', () => {
     const r = load(MACHINE, 'TEST_Machine', { maxCyclesPerTest: 5 })
     r.engine.runCycles(3, r.suite, r.ctx)
-    expect(() => r.engine.runCycles(3, r.suite, r.ctx)).toThrow(IecRuntimeError)
+    expect(() => r.engine.runCycles(3, r.suite, r.ctx)).toThrow(IecLimitError)
     expect(r.engine.cycle).toBe(5)
   })
 })

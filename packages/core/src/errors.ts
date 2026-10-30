@@ -21,6 +21,14 @@ export class IecRuntimeError extends IecError {
   }
 }
 
+/** Raised when a resource limit (allocation, wall time, cycle budget) is exceeded. */
+export class IecLimitError extends IecError {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'IecLimitError'
+  }
+}
+
 /** Raised when `RUN_UNTIL` exceeds its max-cycles budget without the condition becoming TRUE. */
 export class IecTimeoutError extends IecError {
   constructor(message?: string) {

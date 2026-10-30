@@ -1,5 +1,5 @@
 import type { Node } from 'web-tree-sitter'
-import { IecRuntimeError, IecTimeoutError } from '../errors.js'
+import { IecLimitError, IecRuntimeError, IecTimeoutError } from '../errors.js'
 import { parseExpressionFragment } from '../parser/fragment.js'
 import type { Session } from '../session.js'
 import type { SimClock } from './clock.js'
@@ -53,9 +53,9 @@ export class CycleEngine implements ClockView {
   }
 
   private runOne(suite: FbInstance, ctx: EvalContext): void {
-    // TODO(3.8): maxCyclesPerTest is enforced here as IecRuntimeError until task 3.8 introduces IecLimitError.
     const max = ctx.limits.maxCyclesPerTest
-    if (this.cycle >= max) throw new IecRuntimeError(`cycle budget exceeded: more than ${String(max)} cycles (limits.maxCyclesPerTest)`)
+    if (this.cycle >= max) throw new IecLimitError(`cycle budget exceeded: more than ${String(max)} cycles (limits.maxCyclesPerTest)`)
+    this.session.checkDeadline()
     this.cycle++
     this.clock.advance(this.cycleTimeNs)
     for (const hook of this.session.preCycle) hook(this.cycle)

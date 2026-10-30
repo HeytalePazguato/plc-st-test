@@ -300,6 +300,8 @@ function iterationGuard(node: Node, ctx: EvalContext): () => void {
   let count = 0
   return () => {
     count += 1
+    // The wall-clock deadline is only consulted every 1024 iterations to keep the loop hot path cheap.
+    if ((count & 1023) === 0) ctx.session.checkDeadline()
     if (count > max) throw fail(node, ctx, `loop exceeded the maximum of ${String(max)} iterations (limits.maxLoopIterations)`)
   }
 }

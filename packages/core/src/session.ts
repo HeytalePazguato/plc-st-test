@@ -5,6 +5,7 @@
  */
 import type { FbStubDef, HostFnDef, NodeHandler } from '@plc-st/plugin-api'
 import type { OriginalLocation, ProjectWarning } from '@plc-st/project-model'
+import { IecLimitError } from './errors.js'
 import { DEFAULT_LIMITS, type Limits } from './limits.js'
 
 /** Receives a hit for each covered statement/branch id. */
@@ -76,6 +77,10 @@ export class Session {
   readonly postCycle: SessionHook[] = []
   coverage?: CoverageSink
   readonly mocks: MockStore = new EmptyMockStore()
+  /** Scalar slots allocated by the current test so far (see `limits.maxAllocatedElements`). */
+  allocation = 0
+  /** Wall-clock deadline of the current test as a `Date.now()` timestamp; `Infinity` until `startDeadline` is called. */
+  deadline = Infinity
 
   constructor({ limits = DEFAULT_LIMITS, caseSensitive }: SessionOptions) {
     this.limits = limits
@@ -83,6 +88,17 @@ export class Session {
     const onWarn = (code: string, message: string): void => this.warn(code, message)
     this.hostFns = new Registry<HostFnDef>('host function', caseSensitive, onWarn)
     this.fbStubs = new Registry<FbStubDef>('function block stub', caseSensitive, onWarn)
+  }
+
+  /** Starts a test's budgets: the deadline becomes `nowMs + limits.maxExecutionTimeMs` and the allocation counter is reset. */
+  startDeadline(nowMs: number = Date.now()): void {
+    this.deadline = nowMs + this.limits.maxExecutionTimeMs
+    this.allocation = 0
+  }
+
+  /** Throws `IecLimitError` once the deadline has passed. */
+  checkDeadline(nowMs: number = Date.now()): void {
+    if (nowMs > this.deadline) throw new IecLimitError(`test exceeded max_execution_time_ms=${String(this.limits.maxExecutionTimeMs)}`)
   }
 
   warn(code: string, message: string, location?: OriginalLocation): void {
