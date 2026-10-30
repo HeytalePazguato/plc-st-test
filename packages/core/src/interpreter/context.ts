@@ -7,6 +7,7 @@ import type { CallArg, Slot } from '@plc-st/plugin-api'
 import type { IecValue } from './values.js'
 import type { SymbolTable } from '../symbols/table.js'
 import type { Limits } from '../limits.js'
+import type { Session } from '../session.js'
 
 /**
  * `Slot` (a mutable variable cell; VAR_IN_OUT aliasing is two names pointing at the SAME `Slot`) and `CallArg` (a bound call argument carrying its value and, for variables, its `Slot`) are part of the plugin contract and declared in `@plc-st/plugin-api`.
@@ -43,4 +44,5 @@ export interface EvalContext {
   chain: ScopeChain
   limits: Limits
   callPou: CallPou
+  session: Session
 }
