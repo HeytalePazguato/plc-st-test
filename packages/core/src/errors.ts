@@ -53,3 +53,11 @@ export class AssertionFailure extends IecError {
     this.location = location
   }
 }
+
+/** Raised by the plugin host when a plugin cannot be resolved, imported or used (not installed, incompatible `apiVersion`, wrong export shape). */
+export class PluginError extends IecError {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'PluginError'
+  }
+}

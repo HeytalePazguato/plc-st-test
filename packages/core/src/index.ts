@@ -13,3 +13,5 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 export const VERSION: string = pkg.version
 
 export { parseTimeLiteral } from './interpreter/time.js'
+export { PluginError } from './errors.js'
+export { applyPlugins, createPluginRegistries, loadPlugins, type ApplyPluginsOptions, type PluginRegistries } from './plugins/host.js'
