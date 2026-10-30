@@ -131,7 +131,7 @@ function scalarValue(
       if (type === IecType.LREAL) return Number(initNode.text.replace(/_/g, ''))
       if (type === IecType.STRING || type === IecType.WSTRING) return initNode.text
       if (type === IecType.BOOL) return initNode.text.trim() !== '0'
-      return evalIntLiteral(initNode.text, isBigIntType(type))
+      return evalIntLiteral(initNode.text, isBigIntType(type) || type === IecType.TIME)
     }
     case 'real_literal': {
       const n = Number(initNode.text.replace(/_/g, ''))
@@ -149,7 +149,7 @@ function scalarValue(
 function scalarDefault(type: IecType): number | bigint | boolean | string {
   if (type === IecType.BOOL) return false
   if (type === IecType.STRING || type === IecType.WSTRING) return ''
-  if (isBigIntType(type)) return 0n
+  if (isBigIntType(type) || type === IecType.TIME) return 0n
   return 0
 }
 
@@ -225,10 +225,8 @@ function stringDefault(typeNode: Node, initNode: Node | undefined): IecValue {
   if (initNode !== undefined && initNode.type === 'string_literal') {
     value = stringLiteralText(initNode.text)
   }
-  if (maxLen !== undefined && value.length > maxLen) {
-    value = value.slice(0, maxLen)
-  }
-  return { kind: 'scalar', type, value }
+  if (maxLen === undefined) return { kind: 'scalar', type, value }
+  return { kind: 'scalar', type, value: value.slice(0, maxLen), maxLength: maxLen }
 }
 
 function elemTypeOf(node: Node): IecType | string {
@@ -365,7 +363,7 @@ function enumDefaultValue(
 export function cloneValue(v: IecValue): IecValue {
   switch (v.kind) {
     case 'scalar':
-      return { kind: 'scalar', type: v.type, value: v.value }
+      return v.maxLength === undefined ? { kind: 'scalar', type: v.type, value: v.value } : { kind: 'scalar', type: v.type, value: v.value, maxLength: v.maxLength }
     case 'array':
       return {
         kind: 'array',

@@ -48,7 +48,7 @@ Union of the elementary IEC 61131-3 type names modelled by the interpreter: `BOO
 
 A runtime value. It is a discriminated union on `kind`:
 
-- `{ kind: 'scalar'; type: IecType; value: number | bigint | boolean | string }`. Types up to 32 bits use `number`; `LINT`, `ULINT`, and `LWORD` use `bigint`.
+- `{ kind: 'scalar'; type: IecType; value: number | bigint | boolean | string; maxLength?: number }`. Types up to 32 bits use `number`; `LINT`, `ULINT`, `LWORD` and `TIME` (nanoseconds; DATE, TIME_OF_DAY and DATE_AND_TIME fold onto it) use `bigint`. `maxLength` is the declared capacity of a `STRING(n)` / `WSTRING(n)` variable; assignments truncate to it.
 - `{ kind: 'array'; elemType: IecType | string; dims: [number, number][]; data: IecValue[] }`. `dims` holds one `[lower, upper]` pair per dimension.
 - `{ kind: 'struct'; typeName: string; fields: Map<string, IecValue> }`.
 - `{ kind: 'enum'; typeName: string; value: number }`.

@@ -120,10 +120,11 @@ describe('values', () => {
       kind: 'scalar',
       type: IecType.STRING,
       value: 'hello worl',
+      maxLength: 10,
     })
   })
 
-  it('elementary defaults: BOOL false, REAL 0, TIME 0, LINT 0n', () => {
+  it('elementary defaults: BOOL false, REAL 0, TIME 0n, LINT 0n', () => {
     expect(defaultValue(varType('b : BOOL;'), emptyResolver)).toEqual({
       kind: 'scalar',
       type: IecType.BOOL,
@@ -137,7 +138,7 @@ describe('values', () => {
     expect(defaultValue(varType('t : TIME;'), emptyResolver)).toEqual({
       kind: 'scalar',
       type: IecType.TIME,
-      value: 0,
+      value: 0n,
     })
     expect(defaultValue(varType('l : LINT;'), emptyResolver)).toEqual({
       kind: 'scalar',

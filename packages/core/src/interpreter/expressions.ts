@@ -29,7 +29,7 @@ type Num = number | bigint
 // ---------------------------------------------------------------------------
 
 /** `<file>:<line>` of `node` in the original source, or the parse-tree line when the node's tree is unknown to the symbol table. */
-function where(node: Node, ctx: EvalContext): string {
+export function where(node: Node, ctx: EvalContext): string {
   try {
     const loc = ctx.symbols.locate(node)
     return `${loc.file}:${String(loc.line)}`
@@ -39,7 +39,8 @@ function where(node: Node, ctx: EvalContext): string {
   }
 }
 
-function fail(node: Node, ctx: EvalContext, message: string): IecRuntimeError {
+/** An `IecRuntimeError` whose message ends with `node`'s original location. */
+export function fail(node: Node, ctx: EvalContext, message: string): IecRuntimeError {
   return new IecRuntimeError(`${message} at ${where(node, ctx)}`)
 }
 

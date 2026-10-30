@@ -27,9 +27,9 @@ export type IecType =
   | 'STRING'
   | 'WSTRING'
 
-/** A runtime value: scalar, array, struct, or enum. Types up to 32 bits are JS `number`; LINT/ULINT/LWORD are `bigint`. */
+/** A runtime value: scalar, array, struct, or enum. Types up to 32 bits are JS `number`; LINT/ULINT/LWORD and TIME (nanoseconds; the date/time family folds onto it) are `bigint`. `maxLength` is the declared capacity of a `STRING(n)`/`WSTRING(n)` variable; assignments truncate to it. */
 export type IecValue =
-  | { kind: 'scalar'; type: IecType; value: number | bigint | boolean | string }
+  | { kind: 'scalar'; type: IecType; value: number | bigint | boolean | string; maxLength?: number }
   | {
       kind: 'array'
       elemType: IecType | string
