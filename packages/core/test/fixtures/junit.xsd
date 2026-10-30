@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="testsuites">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="testsuite" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="testcase" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:choice minOccurs="0">
+                    <xs:element name="skipped">
+                      <xs:complexType/>
+                    </xs:element>
+                    <xs:element name="failure">
+                      <xs:complexType mixed="true">
+                        <xs:attribute name="message" type="xs:string" use="required"/>
+                        <xs:attribute name="type" type="xs:string" use="required"/>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element name="error">
+                      <xs:complexType mixed="true">
+                        <xs:attribute name="message" type="xs:string" use="required"/>
+                        <xs:attribute name="type" type="xs:string" use="required"/>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:choice>
+                  <xs:attribute name="name" type="xs:string" use="required"/>
+                  <xs:attribute name="classname" type="xs:string" use="required"/>
+                  <xs:attribute name="time" type="xs:decimal" use="required"/>
+                  <xs:attribute name="file" type="xs:string"/>
+                  <xs:attribute name="line" type="xs:integer"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+            <xs:attribute name="name" type="xs:string" use="required"/>
+            <xs:attribute name="tests" type="xs:integer" use="required"/>
+            <xs:attribute name="failures" type="xs:integer" use="required"/>
+            <xs:attribute name="errors" type="xs:integer" use="required"/>
+            <xs:attribute name="skipped" type="xs:integer" use="required"/>
+            <xs:attribute name="time" type="xs:decimal" use="required"/>
+            <xs:attribute name="timestamp" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string"/>
+      <xs:attribute name="tests" type="xs:integer"/>
+      <xs:attribute name="failures" type="xs:integer"/>
+      <xs:attribute name="errors" type="xs:integer"/>
+      <xs:attribute name="skipped" type="xs:integer"/>
+      <xs:attribute name="time" type="xs:decimal"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

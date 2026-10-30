@@ -15,3 +15,7 @@ export const VERSION: string = pkg.version
 export { parseTimeLiteral } from './interpreter/time.js'
 export { PluginError } from './errors.js'
 export { applyPlugins, createPluginRegistries, loadPlugins, type ApplyPluginsOptions, type PluginRegistries } from './plugins/host.js'
+export { junitReporter, renderJunit } from './reporters/junit.js'
+export { jsonReporter, renderJson } from './reporters/json.js'
+export { tapReporter, renderTap } from './reporters/tap.js'
+export { createTerminalReporter, renderTerminal, terminalReporter, type TerminalReporterOptions } from './reporters/terminal.js'
