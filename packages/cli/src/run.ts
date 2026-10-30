@@ -42,6 +42,8 @@ export interface CliIo {
   env: Record<string, string | undefined>
   stdout(text: string): void
   stderr(text: string): void
+  /** Whether stdout is a terminal; watch mode clears the screen between runs only then. */
+  isTTY?: boolean
 }
 
 export const processIo = (): CliIo => ({
@@ -49,6 +51,7 @@ export const processIo = (): CliIo => ({
   env: process.env,
   stdout: (text) => void process.stdout.write(text),
   stderr: (text) => void process.stderr.write(text),
+  isTTY: process.stdout.isTTY,
 })
 
 interface ProjectOptions {
@@ -57,6 +60,13 @@ interface ProjectOptions {
   /** Project file, relative to the project root; overrides `project:` in the config. */
   project?: string
   verbose?: boolean
+}
+
+/** What watch mode needs to pick the suites to rerun: the freshly ingested project and the suites left after the filters. */
+export interface RunSelection {
+  project: Project
+  table: SymbolTable
+  suites: SuiteDescriptor[]
 }
 
 export interface RunOptions extends ProjectOptions {
@@ -70,6 +80,8 @@ export interface RunOptions extends ProjectOptions {
   test?: string
   coverage?: boolean
   strictLibraries?: boolean
+  /** Narrows the suites to run after discovery and the filters; when it returns none, nothing runs and no reporter is called. */
+  select?: (selection: RunSelection) => SuiteDescriptor[]
 }
 
 export type DiscoverOptions = ProjectOptions
@@ -212,7 +224,9 @@ async function runPipeline(path: string | undefined, opts: RunOptions, io: CliIo
 
   const { factory, warnings: stubWarnings } = createSessionFactory(prepared, opts.strictLibraries === true || config.strict_libraries, coverage)
   const discovery = discoverSuites(table, { strategy: dialect.testStrategy, pattern: config.suite_pattern })
-  const suites = filterSuites(discovery.suites, table, opts)
+  const filtered = filterSuites(discovery.suites, table, opts)
+  const suites = opts.select === undefined ? filtered : opts.select({ project, table, suites: filtered })
+  if (opts.select !== undefined && suites.length === 0) return { exitCode: EXIT_PASSED }
 
   const results = runAll(suites, {
     table,

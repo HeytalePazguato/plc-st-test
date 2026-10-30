@@ -7,6 +7,7 @@ import { Command, CommanderError } from 'commander'
 import { VERSION as CORE_VERSION } from '@plc-st/core'
 import { PLUGIN_API_VERSION } from '@plc-st/plugin-api'
 import { discover, EXIT_ERROR, processIo, run, type CliIo } from './run.js'
+import { watchProject } from './watch.js'
 
 // `package.json` sits outside this package's `rootDir`, so it is read at load time rather than imported; it resolves from both `src/` and `dist/`.
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
@@ -60,8 +61,13 @@ function createProgram(io: CliIo, setExitCode: (code: number) => void): Command 
     .action(async (path: string | undefined, options: CliRunOptions) => {
       const { reporter, watch, ...rest } = options
       if (watch === true) {
-        io.stderr('error: --watch is not implemented yet\n')
-        setExitCode(EXIT_ERROR)
+        const watcher = await watchProject(path, defined({ ...rest, reporters: reporter }), io)
+        const stop = (): void => void watcher.close()
+        process.once('SIGINT', stop)
+        process.once('SIGTERM', stop)
+        await watcher.closed
+        process.off('SIGINT', stop)
+        process.off('SIGTERM', stop)
         return
       }
       const outcome = await run(path, defined({ ...rest, reporters: reporter }), io)

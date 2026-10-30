@@ -129,12 +129,6 @@ describe('run', () => {
     expect(stderr).toContain('--nope')
   })
 
-  it('accepts --watch but reports that it is not implemented', async () => {
-    const { code, stderr } = await cli(['run', fixture('passing'), '--watch'])
-    expect(code).toBe(2)
-    expect(stderr).toContain('not implemented yet')
-  })
-
   it('writes the selected reporters to --out-dir, relative to the working directory', async () => {
     const { code, stdout } = await cli(['run', fixture('passing'), '--reporter', 'json', 'tap', '--out-dir', 'out'])
     expect(code).toBe(0)
