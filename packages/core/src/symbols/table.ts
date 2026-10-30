@@ -210,6 +210,11 @@ export class SymbolTable implements TypeResolver {
     return this.enums.get(this.key(name))
   }
 
+  /** All collected enum types (insertion order), e.g. for resolving a bare enum member. */
+  getEnums(): EnumTypeInfo[] {
+    return [...this.enums.values()]
+  }
+
   /** All collected POUs (insertion order). */
   getPous(): Pou[] {
     return [...this.pous.values()]

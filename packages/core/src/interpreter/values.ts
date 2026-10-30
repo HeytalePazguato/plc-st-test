@@ -54,10 +54,18 @@ const ELEMENTARY: Record<string, IecType> = {
   LDT: IecType.TIME,
   CHAR: IecType.STRING,
   WCHAR: IecType.WSTRING,
+  // Not elementary_type keywords (the grammar gives them a string_type node) but valid typed-literal prefixes.
+  STRING: IecType.STRING,
+  WSTRING: IecType.WSTRING,
+}
+
+/** The `IecType` an elementary type keyword (e.g. `INT`, `tod`) folds onto, or `undefined` when `name` is not an elementary keyword. */
+export function elementaryType(name: string): IecType | undefined {
+  return Object.hasOwn(ELEMENTARY, name.toUpperCase()) ? ELEMENTARY[name.toUpperCase()] : undefined
 }
 
 function elementaryToIecType(name: string): IecType {
-  const t = ELEMENTARY[name.toUpperCase()]
+  const t = elementaryType(name)
   if (t === undefined) {
     // Unknown elementary keyword: fall back to DINT so callers never crash.
     return IecType.DINT
@@ -336,7 +344,8 @@ function enumDefaultValue(
   if (initNode !== undefined) {
     if (
       initNode.type === 'identifier' ||
-      initNode.type === 'qualified_identifier'
+      initNode.type === 'qualified_identifier' ||
+      initNode.type === 'member_access_expression'
     ) {
       const memberName = initNode.text.split('.').pop() ?? initNode.text
       const member = resolved.members.find((m) => m.name === memberName)

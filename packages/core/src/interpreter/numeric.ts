@@ -65,7 +65,7 @@ export function isBigIntType(t: IecType): boolean {
 }
 
 /** True for any integer/bit type (has bit-width metadata). */
-function isIntType(t: IecType): boolean {
+export function isIntType(t: IecType): boolean {
   return INT_META[t] !== undefined
 }
 
