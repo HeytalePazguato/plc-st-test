@@ -7,6 +7,7 @@
 import type { Node } from 'web-tree-sitter'
 import type { EnumTypeInfo, IecValue, TypeResolver } from '@plc-st/plugin-api'
 import { IecLimitError, IecRuntimeError } from '../errors.js'
+import { interfaceTarget } from '../oop/interface.js'
 import type { Limits } from '../limits.js'
 import { IecType, isBigIntType, isIntType, froundReal, wrapInt } from './numeric.js'
 
@@ -474,6 +475,8 @@ export function cloneValue(v: IecValue): IecValue {
         data: v.data.map(cloneValue),
       }
     case 'struct': {
+      // An assigned interface value is immutable and shares its target, so a copy is the value itself.
+      if (interfaceTarget(v) !== undefined) return v
       const fields = new Map<string, IecValue>()
       for (const [k, fv] of v.fields) fields.set(k, cloneValue(fv))
       return { kind: 'struct', typeName: v.typeName, fields }

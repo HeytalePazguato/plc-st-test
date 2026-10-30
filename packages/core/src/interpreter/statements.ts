@@ -17,6 +17,8 @@ import { evalCall, evalExpression, evalLValue, fail, where } from './expressions
 import { IecType, froundReal, isBigIntType, isIntType, wrapInt } from './numeric.js'
 import { cloneValue, type IecValue } from './values.js'
 import { IecRuntimeError } from '../errors.js'
+import { bindInterface, isInterfaceValue } from '../oop/interface.js'
+import { declaredValue } from '../oop/property.js'
 
 type Scalar = Extract<IecValue, { kind: 'scalar' }>
 
@@ -73,7 +75,7 @@ export function execStatement(node: Node, ctx: EvalContext): ControlSignal {
 
 /** Store `value` into `slot`, converted to the representation of the value the slot already holds (its declared type). `node` locates conversion errors. */
 export function storeValue(slot: Slot, value: IecValue, node: Node, ctx: EvalContext): void {
-  slot.value = convertForStore(slot.value, value, node, ctx)
+  slot.value = convertForStore(declaredValue(slot), value, node, ctx)
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +133,7 @@ function condition(node: Node, ctx: EvalContext): boolean {
 // ---------------------------------------------------------------------------
 
 function assign(slot: Slot, rhs: Node, node: Node, ctx: EvalContext): void {
-  const target = slot.value
+  const target = declaredValue(slot)
   const value = evalExpression(rhs, ctx, target.kind === 'enum' && target.typeName !== '' ? target.typeName : undefined)
   storeValue(slot, value, node, ctx)
 }
@@ -163,9 +165,15 @@ function convertForStore(target: IecValue, value: IecValue, node: Node, ctx: Eva
       // Dialects allow an integer to be stored into an enum variable.
       if (value.kind === 'scalar' && isIntType(value.type)) return { kind: 'enum', typeName: target.typeName, value: Number(value.value) }
       throw mismatch()
-    case 'struct':
+    case 'struct': {
+      if (isInterfaceValue(target, ctx.symbols)) {
+        const bound = bindInterface(target, value, ctx.symbols)
+        if (bound === undefined) throw mismatch()
+        return bound
+      }
       if (value.kind !== 'struct' || !sameName(target.typeName, value.typeName, ctx)) throw mismatch()
       return cloneValue(value)
+    }
     case 'array': {
       if (value.kind !== 'array' || value.data.length !== target.data.length) throw mismatch()
       // Element-wise so each element keeps the target's element representation (e.g. STRING(n) capacity).

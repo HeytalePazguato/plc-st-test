@@ -13,6 +13,7 @@ import { SourceMap, type OriginalLocation, type Project, type SourceUnit } from 
 import { parseSource, type ParsedFile } from '../parser/parse.js'
 import { parseStatementFragment, wrapStatementFragment, STATEMENT_FRAGMENT_LINE_OFFSET } from '../parser/fragment.js'
 import { IecError } from '../errors.js'
+import { verifyImplements } from '../oop/interface.js'
 import type {
   TypeResolver,
   ResolvedType,
@@ -47,6 +48,18 @@ export interface Method {
   /** The method_declaration/signature node; body statements are its `body` field. */
   bodyNode?: Node
   returnTypeNode?: Node
+  /** Declared `METHOD ABSTRACT`: it does not satisfy an interface. */
+  isAbstract?: boolean
+}
+
+/** A PROPERTY (FB member, or interface property signature). Its accessors are methods named after the property: GET's result variable is the property name, and so is SET's implicit input. */
+export interface Property {
+  name: string
+  typeNode: Node
+  /** The property_declaration/signature node. */
+  bodyNode: Node
+  get?: Method
+  set?: Method
 }
 
 /** An ACTION attached to a POU (from a project unit with role 'action'). */
@@ -66,9 +79,14 @@ export interface Pou {
   name: string
   kind: PouKind
   methods: Method[]
+  properties: Property[]
   varBlocks: VarBlock[]
   extendsName?: string
   implementsNames: string[]
+  /** What an INTERFACE EXTENDS (it may name several; empty for other POUs). */
+  baseInterfaces: string[]
+  /** Declared `ABSTRACT FUNCTION_BLOCK`. */
+  isAbstract: boolean
   /** The declaration node; body statements are accessible via its `body` field. */
   bodyNode?: Node
   /** Path of the (original) file this POU was declared in. */
@@ -109,6 +127,8 @@ export interface ProjectBuildOptions {
 export interface SymbolDiagnostic {
   location: OriginalLocation
   message: string
+  /** Warning code in the results; syntax errors have none. */
+  code?: string
 }
 
 /** Where a parsed tree came from, so its nodes can be mapped back to original files. */
@@ -251,8 +271,8 @@ export class SymbolTable implements TypeResolver {
   }
 
   /** @internal */
-  addDiagnostic(location: OriginalLocation, message: string): void {
-    this.diagnostics.push({ location, message })
+  addDiagnostic(location: OriginalLocation, message: string, code?: string): void {
+    this.diagnostics.push(code === undefined ? { location, message } : { location, message, code })
   }
 
   /** @internal Register a POU, reporting a diagnostic on duplicate keys. */
@@ -311,7 +331,7 @@ export class SymbolTable implements TypeResolver {
     }
     for (const pou of this.pous.values()) {
       visit(pou, undefined, pou.varBlocks)
-      for (const method of pou.methods) visit(pou, method, method.varBlocks)
+      for (const method of [...pou.methods, ...accessorsOf(pou)]) visit(pou, method, method.varBlocks)
     }
     return [...found.values()]
   }
@@ -326,6 +346,11 @@ export class SymbolTable implements TypeResolver {
     const pou = this.pous.get(this.key(name))
     return pou !== undefined && pou.kind === 'functionBlock'
   }
+}
+
+/** The GET and SET accessors of every property of `pou`. */
+export function accessorsOf(pou: Pou): Method[] {
+  return pou.properties.flatMap((p) => [p.get, p.set].filter((a) => a !== undefined))
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +473,8 @@ function collectUnits(units: DeclarationUnit[], table: SymbolTable): void {
       v.instanceOf = typeName
     }
   }
+
+  verifyImplements(table)
 }
 
 /** Recurse into namespaces; collect POUs and TYPE declarations elsewhere. */
@@ -473,6 +500,16 @@ function collectDeclarations(
   }
 }
 
+/** The type names among a comma-separated field's children. */
+function typeNames(nodes: Node[]): string[] {
+  return nodes.filter((c) => c.type === 'identifier' || c.type === 'qualified_identifier').map((c) => c.text)
+}
+
+/** True when `node` declares the keyword `modifier` (modifiers are anonymous tokens in the grammar). */
+function hasModifier(node: Node, modifier: string): boolean {
+  return node.children.some((c) => !c.isNamed && c.text.toUpperCase() === modifier)
+}
+
 function collectPou(
   node: Node,
   kind: PouKind,
@@ -486,21 +523,23 @@ function collectPou(
   const extendsNode = node.childForFieldName('extends')
   const extendsName = extendsNode !== null ? extendsNode.text : undefined
 
-  const implementsNames = node
-    .childrenForFieldName('implements')
-    .filter((c) => c.type === 'identifier' || c.type === 'qualified_identifier')
-    .map((c) => c.text)
+  const implementsNames = typeNames(node.childrenForFieldName('implements'))
 
   const varBlocks = collectVarBlocks(node, instanceVars)
   const methods = collectMethods(node, instanceVars)
+  const properties = collectProperties(node, instanceVars)
+  const baseInterfaces = kind === 'interface' ? typeNames(node.childrenForFieldName('extends')) : []
 
   return {
     name,
     kind,
     methods,
+    properties,
     varBlocks,
     extendsName,
     implementsNames,
+    baseInterfaces,
+    isAbstract: hasModifier(node, 'ABSTRACT'),
     bodyNode: node,
     file: table.locate(node).file,
     unitId: unit.unitId,
@@ -525,9 +564,34 @@ function collectMethods(node: Node, instanceVars: VarEntry[]): Method[] {
       varBlocks: collectVarBlocks(child, instanceVars),
       bodyNode: child,
       returnTypeNode: returnTypeNode ?? undefined,
+      isAbstract: hasModifier(child, 'ABSTRACT'),
     })
   }
   return methods
+}
+
+function collectProperties(node: Node, instanceVars: VarEntry[]): Property[] {
+  const properties: Property[] = []
+  for (const child of node.namedChildren) {
+    if (child.type !== 'property_declaration' && child.type !== 'property_signature') continue
+    const nameNode = child.childForFieldName('name')
+    const typeNode = child.childForFieldName('type')
+    if (nameNode === null || typeNode === null) continue
+    const name = nameNode.text
+    const property: Property = { name, typeNode, bodyNode: child }
+    for (const accessor of child.namedChildren) {
+      if (accessor.type !== 'property_accessor') continue
+      const varBlocks = collectVarBlocks(accessor, instanceVars)
+      if (accessor.child(0)?.text.toUpperCase() === 'GET') {
+        property.get ??= { name, varBlocks, bodyNode: accessor, returnTypeNode: typeNode }
+      } else {
+        const input: VarBlock = { kind: 'input', vars: [{ name, kind: 'input', typeNode }] }
+        property.set ??= { name, varBlocks: [input, ...varBlocks], bodyNode: accessor }
+      }
+    }
+    properties.push(property)
+  }
+  return properties
 }
 
 function collectVarBlocks(node: Node, instanceVars: VarEntry[]): VarBlock[] {

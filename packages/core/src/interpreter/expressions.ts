@@ -7,7 +7,7 @@
  *
  * TIME values are nanoseconds as `bigint`. D#, TOD# and DT# literals fold onto TIME (as the value model does for the date/time family): DATE and DATE_AND_TIME are nanoseconds since 1970-01-01 UTC, TIME_OF_DAY is nanoseconds since midnight.
  *
- * Values returned for variables, members and elements are the stored objects themselves (no copy), so a caller that stores a result elsewhere must `cloneValue` it first. `THIS` / `THIS^` evaluate to the running FB instance (`ctx.self`); other pointers/references are not supported in core: such nodes, like any other unknown node type, are offered to the session's `nodeHandlers` before an `unsupported construct` error is raised.
+ * Values returned for variables, members and elements are the stored objects themselves (no copy), so a caller that stores a result elsewhere must `cloneValue` it first. `THIS` / `THIS^` and `SUPER` / `SUPER^` evaluate to the running FB instance (`ctx.self`); other pointers/references are not supported in core: such nodes, like any other unknown node type, are offered to the session's `nodeHandlers` before an `unsupported construct` error is raised.
  */
 
 import type { Node } from 'web-tree-sitter'
@@ -17,6 +17,7 @@ import { IecType, isBigIntType, isIntType, wrapInt, froundReal, widen, add, sub,
 import { elementaryType, type IecValue } from './values.js'
 import { IecError, IecRuntimeError } from '../errors.js'
 import { caseKey } from '../case.js'
+import { declaredValue } from '../oop/property.js'
 
 type Scalar = Extract<IecValue, { kind: 'scalar' }>
 type ArrayValue = Extract<IecValue, { kind: 'array' }>
@@ -201,9 +202,10 @@ export function evalExpression(node: Node, ctx: EvalContext, enumHint?: string):
       return result
     }
     case 'this_expression':
+    case 'super_expression':
       return thisValue(node, ctx)
     default: {
-      if (node.type === 'dereference_expression' && isThis(node)) return thisValue(node, ctx)
+      if (node.type === 'dereference_expression' && isSelf(node)) return thisValue(node, ctx)
       const handler = ctx.session.nodeHandlers.get(node.type)
       if (handler !== undefined) return handler(node, ctx) as IecValue
       throw fail(node, ctx, `unsupported construct ${node.type}`)
@@ -247,7 +249,7 @@ export function evalCall(node: Node, ctx: EvalContext): IecValue | undefined {
     const valueNode = field(arg, 'value')
     if (arg.children.some((c) => c.type === '=>')) {
       const slot = evalLValue(valueNode, ctx)
-      args.push({ name, value: slot.value, slot })
+      args.push({ name, value: declaredValue(slot), slot })
     } else {
       args.push({ name, ...argument(valueNode, ctx) })
     }
@@ -262,7 +264,18 @@ export function isThis(node: Node): boolean {
   return node.type === 'dereference_expression' && isThis(field(node, 'pointer'))
 }
 
-/** The running instance's value for `THIS` / `THIS^`. */
+/** True for `SUPER` and `SUPER^` (possibly parenthesised): the running instance, seen from its base. */
+export function isSuper(node: Node): boolean {
+  if (node.type === 'parenthesized_expression') return isSuper(inner(node))
+  if (node.type === 'super_expression') return true
+  return node.type === 'dereference_expression' && isSuper(field(node, 'pointer'))
+}
+
+function isSelf(node: Node): boolean {
+  return isThis(node) || isSuper(node)
+}
+
+/** The running instance's value for `THIS` / `THIS^` / `SUPER` / `SUPER^`. */
 function thisValue(node: Node, ctx: EvalContext): IecValue {
   if (ctx.self === undefined) throw fail(node, ctx, `'${node.text}' used outside a function block`)
   return ctx.self.value
@@ -287,6 +300,7 @@ const EXPRESSION_TYPES: readonly string[] = [
   'binary_expression',
   'call_expression',
   'this_expression',
+  'super_expression',
 ]
 
 // ---------------------------------------------------------------------------
@@ -367,7 +381,11 @@ function memberSlot(node: Node, ctx: EvalContext): Slot {
     throw fail(node, ctx, `'${objectNode.text}' is ${describe(base)}, not a structure or function block instance`)
   }
   const key = fieldKey(base, member, ctx)
-  if (key === undefined) throw fail(node, ctx, `'${objectNode.text}' has no member '${member}'`)
+  if (key === undefined) {
+    const property = ctx.propertyOf?.(base, member, isSuper(objectNode), ctx, objectNode)
+    if (property === undefined) throw fail(node, ctx, `'${objectNode.text}' has no member '${member}'`)
+    return property
+  }
   return {
     get value(): IecValue {
       return base.fields.get(key) as IecValue
@@ -425,12 +443,13 @@ function isAddressable(node: Node, ctx: EvalContext): boolean {
     case 'index_expression':
       return isAddressable(field(node, 'object'), ctx)
     default:
-      return isThis(node) && ctx.self !== undefined
+      return isSelf(node) && ctx.self !== undefined
   }
 }
 
 function argument(node: Node, ctx: EvalContext): { value: IecValue; slot?: Slot } {
-  if (!isAddressable(node, ctx)) return { value: evalExpression(node, ctx) }
+  // The instance itself has no slot; only its members do.
+  if (!isAddressable(node, ctx) || isSelf(node)) return { value: evalExpression(node, ctx) }
   const slot = evalLValue(node, ctx)
   return { value: slot.value, slot }
 }

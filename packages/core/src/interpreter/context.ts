@@ -8,7 +8,7 @@ import type { CallArg, DialectHooks, Slot } from '@plc-st/plugin-api'
 import type { IecValue } from './values.js'
 import type { Scope } from './scope.js'
 import type { FbInstance } from './pou.js'
-import type { SymbolTable } from '../symbols/table.js'
+import type { Pou, SymbolTable } from '../symbols/table.js'
 import type { Limits } from '../limits.js'
 import type { Session } from '../session.js'
 
@@ -40,6 +40,11 @@ export type CallPou = (
   node?: Node,
 ) => IecValue | undefined
 
+/**
+ * Resolves `<base>.<name>` to the slot of a PROPERTY, or `undefined` when the instance behind `base` has none. `fromBase` is set for `SUPER`, and `node` is the base expression. Implemented in pou.ts and injected for the same reason as `CallPou`.
+ */
+export type PropertyOf = (base: IecValue, name: string, fromBase: boolean, ctx: EvalContext, node: Node) => Slot | undefined
+
 /** Read-only view of the simulated clock, supplied by the cycle engine. */
 export interface ClockView {
   readonly cycle: number
@@ -54,6 +59,8 @@ export interface EvalContext {
   chain: ScopeChain
   limits: Limits
   callPou: CallPou
+  /** Property access; without it, no member resolves to a property. */
+  propertyOf?: PropertyOf
   session: Session
   /** Dialect lifecycle hooks (onInstantiate / onDispose). */
   hooks?: DialectHooks
@@ -63,6 +70,8 @@ export interface EvalContext {
   clock?: ClockView
   /** The FB/program instance whose body, method or action is running (THIS, bare action/method calls). */
   self?: FbInstance
+  /** The POU in `self`'s inheritance chain that declares the running code; `SUPER` starts above it. */
+  owner?: Pou
   /** Number of POU activations on the call stack, checked against `limits.maxRecursionDepth`. */
   depth?: number
 }

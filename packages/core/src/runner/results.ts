@@ -30,7 +30,7 @@ export function runAll(suites: SuiteDescriptor[], env: RunEnv): RunResultsV1 {
     seen.add(key)
     warnings.push(w)
   }
-  for (const d of env.table.diagnostics) add({ code: 'SYNTAX', message: d.message, location: d.location })
+  for (const d of env.table.diagnostics) add({ code: d.code ?? 'SYNTAX', message: d.message, location: d.location })
   for (const w of runs.flatMap((r) => r.sessions.flatMap((s) => s.warnings))) add(w)
 
   return {

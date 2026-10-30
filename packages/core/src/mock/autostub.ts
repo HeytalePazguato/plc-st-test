@@ -11,7 +11,7 @@ import { IecError } from '../errors.js'
 import { IecType, isBigIntType } from '../interpreter/numeric.js'
 import { elementaryType } from '../interpreter/values.js'
 import type { Session } from '../session.js'
-import type { Method, Pou, SymbolTable, UnresolvedType, VarEntry } from '../symbols/table.js'
+import { accessorsOf, type Method, type Pou, type SymbolTable, type UnresolvedType, type VarBlock, type VarEntry } from '../symbols/table.js'
 
 export interface AutoStubOptions {
   /** Fail with one `IecError` listing every unresolved symbol instead of stubbing them. */
@@ -48,10 +48,15 @@ function specType(text: string | undefined): string | undefined {
   return elementaryType(t) !== undefined || /^W?STRING\s*(?:[([]\s*\d+\s*[)\]])?$/i.test(t) ? t : undefined
 }
 
-/** The declared variables visible in `pou`: its own and those of its methods (a clash between a method local and a POU variable is vanishingly rare, so one flat map is enough). */
+/** The variable blocks of `pou`, its methods and its property accessors. */
+function varBlocksOf(pou: Pou): VarBlock[][] {
+  return [pou.varBlocks, ...[...pou.methods, ...accessorsOf(pou)].map((m: Method) => m.varBlocks)]
+}
+
+/** The declared variables visible in `pou`: its own and those of its methods and accessors (a clash between a method local and a POU variable is vanishingly rare, so one flat map is enough). */
 function declaredVars(pou: Pou, caseSensitive: boolean): Map<string, VarEntry> {
   const vars = new Map<string, VarEntry>()
-  for (const blocks of [pou.varBlocks, ...pou.methods.map((m: Method) => m.varBlocks)]) {
+  for (const blocks of varBlocksOf(pou)) {
     for (const block of blocks) for (const v of block.vars) vars.set(caseKey(v.name, caseSensitive), v)
   }
   return vars
@@ -206,7 +211,7 @@ function collectFns(table: SymbolTable, session: Session): FnUsage[] {
     known.add(caseKey(pou.name, caseSensitive))
     for (const m of pou.methods) known.add(caseKey(m.name, caseSensitive))
     for (const a of pou.actions) known.add(caseKey(a.name, caseSensitive))
-    for (const blocks of [pou.varBlocks, ...pou.methods.map((m: Method) => m.varBlocks)]) {
+    for (const blocks of varBlocksOf(pou)) {
       for (const block of blocks) for (const v of block.vars) known.add(caseKey(v.name, caseSensitive))
     }
   }

@@ -3,7 +3,9 @@
  *
  * Instance representation: an FB (or program) instance is an `FbInstance` whose `value` is an ordinary struct `IecValue`. Its `fields` map is the single storage of the instance's VAR_INPUT, VAR_OUTPUT and VAR members (nested FB members hold the nested instance's own `value`), so `fb.Q`, `fb.inner.x` and assignments to `fb.IN` go through the expression evaluator's normal struct-member path. The instance `scope` declares those same members as live views over the map (plus VAR_TEMP slots, reset on every body invocation, and VAR_IN_OUT forwarding slots re-bound to the caller's variable on each call), so the body sees them by name. The struct value carries a hidden, non-enumerable back-reference to its `FbInstance` (`fbInstanceOf`), which is how a call such as `fb()` / `fb.M()` / `fbs[i]()` finds the instance from the value the evaluator resolves; copies made by `cloneValue` are plain structs without it.
  *
- * Resolution order of `callPou(callee, …)`: (1) a session host function, (2) a user FUNCTION, (3) an FB/program instance named by the callee (user or stub FB), (4) a METHOD `inst.M()` (also `THIS^.M()`, `SUPER^.M()` and a bare `M()` inside the owner), (5) an ACTION `inst.A()` or a bare `A()` inside the owner. A host function that shadows a user POU wins and records one `HOSTFN_SHADOWS_POU` warning per name on the session.
+ * Resolution order of `callPou(callee, …)`: (1) a session host function, (2) a user FUNCTION, (3) an FB/program instance named by the callee (user or stub FB), (4) a METHOD `inst.M()` (also `THIS^.M()`, `SUPER^.M()` and a bare `M()` inside the owner), (5) an ACTION `inst.A()` or a bare `A()` inside the owner. `SUPER^()` runs the base's body on the running instance. Methods, actions and properties dispatch virtually from the instance's own POU (see `oop/inherit.ts`), and an interface-typed receiver forwards to its target (see `oop/interface.ts`). A host function that shadows a user POU wins and records one `HOSTFN_SHADOWS_POU` warning per name on the session.
+ *
+ * Properties are not fields: `fb.P` resolves through `EvalContext.propertyOf` and a bare `P` inside the instance through a scope of property slots built per activation, behind the instance's variables, so accessors count against the activation's depth. GET runs as a method whose result variable is the property, SET as a method whose input is.
  *
  * Arguments bind by name or positionally over the VAR_INPUT / VAR_IN_OUT parameters in declaration order (inherited parameters first); a named argument for a VAR_OUTPUT is an output binding (`Q => target`) copied back after the call. VAR_IN_OUT needs a variable argument. Every POU activation counts against `limits.maxRecursionDepth`.
  */
@@ -13,23 +15,25 @@ import type { CallArg, DialectHooks, FbIo, FbInstanceRef, FbStubDef, HostCallCon
 import type { OriginalLocation } from '@plc-st/project-model'
 import type { ClockView, EvalContext } from './context.js'
 import { Scope, ScopeChainImpl } from './scope.js'
-import { evalExpression, fail, isThis } from './expressions.js'
+import { evalExpression, fail, isSuper, isThis } from './expressions.js'
 import { execBody, storeValue } from './statements.js'
 import { chargeAllocation, cloneValue, defaultValue, elementaryType, type ConstEvaluator, type IecValue } from './values.js'
 import { IecType, isBigIntType } from './numeric.js'
-import type { Action, Method, Pou, SymbolTable, VarEntry } from '../symbols/table.js'
+import type { Action, Method, Pou, Property, SymbolTable, VarEntry } from '../symbols/table.js'
 import type { Session } from '../session.js'
 import type { Limits } from '../limits.js'
 import { IecError, IecLimitError, IecRuntimeError } from '../errors.js'
 import { caseKey } from '../case.js'
+import { findAction, findMethod, findProperty, lineage, type Owned } from '../oop/inherit.js'
+import { boundInstance, fbInstanceOf, isInterfaceValue, linkInstance } from '../oop/interface.js'
+import { PropertySlot } from '../oop/property.js'
+
+export { fbInstanceOf }
 
 type StructValue = Extract<IecValue, { kind: 'struct' }>
 
 /** Warning code recorded when a host function hides a user POU of the same name. */
 export const HOSTFN_SHADOWS_POU = 'HOSTFN_SHADOWS_POU'
-
-/** Hidden back-reference from an instance's struct value to its `FbInstance`. */
-const INSTANCE = Symbol('plc-st.fbInstance')
 
 // ---------------------------------------------------------------------------
 // Frames and instances.
@@ -99,7 +103,7 @@ export class FbInstance implements FbInstanceRef {
     this.nested = frame.children
     this.params = frame.params
     this.temps = frame.temps
-    Object.defineProperty(value, INSTANCE, { value: this })
+    linkInstance(value, this)
   }
 
   /** @internal When defined (on a mock), replaces the body of every call on this instance: `member` is the METHOD or ACTION called, or `undefined` for a call of the instance itself. Arguments are bound first and output bindings copied back afterwards, as for a real call. */
@@ -117,20 +121,14 @@ export class FbInstance implements FbInstanceRef {
   }
 
   hasMethod(name: string): boolean {
-    return findMethod(lineage(this.pou, this.ctx), name, this.ctx) !== undefined
+    return findMethod(lineage(this.pou, this.ctx.symbols), name, this.ctx.symbols) !== undefined
   }
 
   callMethod(name: string, args: CallArg[]): IecValue | undefined {
-    const method = findMethod(lineage(this.pou, this.ctx), name, this.ctx)
-    if (method === undefined) throw new IecRuntimeError(`function block '${this.typeName}' has no method '${name}'`)
-    return invokeMethod(this, method, args, this.ctx)
+    const found = findMethod(lineage(this.pou, this.ctx.symbols), name, this.ctx.symbols)
+    if (found === undefined) throw new IecRuntimeError(`function block '${this.typeName}' has no method '${name}'`)
+    return invokeMethod(this, found, args, this.ctx)
   }
-}
-
-/** The `FbInstance` behind an instance's struct value, or `undefined` for any other value (including copies of an instance). */
-export function fbInstanceOf(value: IecValue | undefined): FbInstance | undefined {
-  if (value?.kind !== 'struct') return undefined
-  return (value as StructValue & { [INSTANCE]?: FbInstance })[INSTANCE]
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +152,7 @@ export function createEvalContext(opts: EvalContextOptions): EvalContext {
     session: opts.session,
     limits: opts.limits ?? opts.session.limits,
     callPou,
+    propertyOf,
     chain: new ScopeChainImpl(globals),
     hooks: opts.hooks,
     globals,
@@ -190,13 +189,15 @@ export function callPou(callee: string, args: CallArg[], ctx: EvalContext, node?
       return invokeMethod(target.inst, target.method, args, ctx, node)
     case 'action':
       return invokeAction(target.inst, target.action, args, ctx, node)
+    case 'base':
+      return callInstance(target.inst, args, ctx, node, target.pou)
     default:
       throw error(ctx, node, `'${callee}' is not a function, function block instance, method or action`)
   }
 }
 
-/** Invoke an instance's body (or its stub's `call`, or its mock interception) with `args`: bind inputs/in-outs, reset VAR_TEMP, run, copy output bindings back. Used for `fb(...)` and by the cycle engine for program instances. */
-export function callInstance(inst: FbInstance, args: CallArg[], ctx: EvalContext, node?: Node): undefined {
+/** Invoke an instance's body (or its stub's `call`, or its mock interception) with `args`: bind inputs/in-outs, reset VAR_TEMP, run, copy output bindings back. Used for `fb(...)` and by the cycle engine for program instances. `body` is the POU whose body to run: a base of `inst.pou` for `SUPER^()`, which resets only that base's VAR_TEMPs, as the caller's are still in use. */
+export function callInstance(inst: FbInstance, args: CallArg[], ctx: EvalContext, node?: Node, body: Pou = inst.pou): undefined {
   const depth = enter(ctx, node, inst.typeName)
   const locNode = node ?? inst.pou.bodyNode
   const outputs = bindArgs(inst.params, args, ctx, node, locNode, inst.typeName)
@@ -205,9 +206,10 @@ export function callInstance(inst: FbInstance, args: CallArg[], ctx: EvalContext
   } else if (inst.stub !== undefined) {
     inst.stub.def.call(inst.stub.state, fbIo(inst, ctx, locNode), hostContext(ctx, node))
   } else {
-    const inner = instanceContext(inst, ctx, depth)
-    for (const t of inst.temps) t.slot.value = initialValue(t.typeNode, inner, depth, [])
-    runBody(bodyStatements(inst.pou.bodyNode), inner, inst.pou.bodyNode)
+    const inner = instanceContext(inst, ctx, depth, undefined, body)
+    const own = new Set(instanceVars(body, ctx).map((v) => v.typeNode))
+    for (const t of inst.temps) if (own.has(t.typeNode)) t.slot.value = initialValue(t.typeNode, inner, depth, [])
+    runBody(bodyStatements(body.bodyNode), inner, body.bodyNode)
   }
   copyOutputs(outputs, ctx, locNode)
   return undefined
@@ -297,15 +299,12 @@ function fieldKey(s: StructValue, name: string, ctx: EvalContext): string | unde
   return undefined
 }
 
-function isSuper(node: Node): boolean {
-  if (node.type === 'parenthesized_expression') return node.namedChildren.some(isSuper)
-  if (node.type === 'super_expression') return true
-  const pointer = node.type === 'dereference_expression' ? node.childForFieldName('pointer') : null
-  return pointer !== null && isSuper(pointer)
-}
-
 function isSelfText(head: string): boolean {
   return /^(THIS|SUPER)\^?$/i.test(head)
+}
+
+function isSuperText(head: string): boolean {
+  return /^SUPER\^?$/i.test(head)
 }
 
 /** Value denoted by a dotted path (`fb`, `fb.inner`, `THIS^.inner`, `GVL.x`), or `undefined` when any segment is missing. */
@@ -332,16 +331,21 @@ function valueAtNode(node: Node, ctx: EvalContext): IecValue | undefined {
     case 'member_access_expression': {
       const object = node.childForFieldName('object')
       const member = node.childForFieldName('member')
-      const base = object === null ? undefined : valueAtNode(object, ctx)
-      if (base?.kind !== 'struct' || member === null) return undefined
-      const key = fieldKey(base, member.text, ctx)
-      return key === undefined ? undefined : base.fields.get(key)
+      if (object === null || member === null) return undefined
+      return memberValue(valueAtNode(object, ctx), member.text, object, ctx)
     }
     case 'index_expression':
       return evalExpression(node, ctx)
     default:
       return isThis(node) || isSuper(node) ? ctx.self?.value : undefined
   }
+}
+
+/** Value of member `name` of `base` (the value of `object`): a field, else a property, whose GET runs. */
+function memberValue(base: IecValue | undefined, name: string, object: Node, ctx: EvalContext): IecValue | undefined {
+  if (base?.kind !== 'struct') return undefined
+  const key = fieldKey(base, name, ctx)
+  return key === undefined ? propertyOf(base, name, isSuper(object), ctx, object)?.value : base.fields.get(key)
 }
 
 /** `HostCallContext.resolvePath`: the slot of a dotted variable path; member slots are live views. */
@@ -354,39 +358,21 @@ function resolvePath(path: string, ctx: EvalContext): Slot | undefined {
   return key === undefined ? undefined : fieldSlot(parent.fields, key)
 }
 
-/** The inheritance chain of `pou`: itself, then its EXTENDS base, and so on. */
-function lineage(pou: Pou, ctx: EvalContext): Pou[] {
-  const chain: Pou[] = []
-  for (let p: Pou | undefined = pou; p !== undefined && !chain.includes(p); p = p.extendsName === undefined ? undefined : ctx.symbols.getPou(p.extendsName)) {
-    chain.push(p)
-  }
-  return chain
-}
+type Target = { kind: 'instance'; inst: FbInstance } | { kind: 'method'; inst: FbInstance; method: Owned<Method> } | { kind: 'action'; inst: FbInstance; action: Owned<Action> } | { kind: 'base'; inst: FbInstance; pou: Pou }
 
-function findMethod(chain: Pou[], name: string, ctx: EvalContext): Method | undefined {
-  for (const pou of chain) {
-    const m = pou.methods.find((x) => sameKey(x.name, name, ctx) && x.bodyNode?.type === 'method_declaration')
-    if (m !== undefined) return m
-  }
-  return undefined
+/** Where member lookup on `receiver` starts: its own POU, or for `SUPER` the base of the POU declaring the running code. */
+function dispatchChain(receiver: FbInstance, fromBase: boolean, ctx: EvalContext): Pou[] {
+  return fromBase ? lineage(ctx.owner ?? receiver.pou, ctx.symbols).slice(1) : lineage(receiver.pou, ctx.symbols)
 }
-
-function findAction(chain: Pou[], name: string, ctx: EvalContext): Action | undefined {
-  for (const pou of chain) {
-    const a = pou.actions.find((x) => sameKey(x.name, name, ctx))
-    if (a !== undefined) return a
-  }
-  return undefined
-}
-
-type Target = { kind: 'instance'; inst: FbInstance } | { kind: 'method'; inst: FbInstance; method: Method } | { kind: 'action'; inst: FbInstance; action: Action }
 
 function resolveTarget(callee: string, ctx: EvalContext, node: Node | undefined): Target | undefined {
-  const parts = callee.split('.').map((p) => p.trim())
-  const whole = fbInstanceOf(node === undefined ? valueAtPath(parts, ctx) : valueAtNode(node, ctx))
-  if (whole !== undefined) return { kind: 'instance', inst: whole }
+  if (ctx.self !== undefined && (node === undefined ? isSuperText(callee.trim()) : isSuper(node))) {
+    const pou = dispatchChain(ctx.self, true, ctx).at(0)
+    return pou === undefined ? undefined : { kind: 'base', inst: ctx.self, pou }
+  }
 
-  // Otherwise `<receiver>.<member>` names a method or action, or a bare name one of the running instance.
+  const parts = callee.split('.').map((p) => p.trim())
+  // `<receiver>.<member>` names a nested instance, a method or an action; a bare name is an instance, or a method or action of the running instance.
   let receiver: FbInstance | undefined
   let member: string
   let fromBase = false
@@ -394,27 +380,76 @@ function resolveTarget(callee: string, ctx: EvalContext, node: Node | undefined)
     const object = node.childForFieldName('object')
     const memberNode = node.childForFieldName('member')
     if (object === null || memberNode === null) return undefined
-    receiver = fbInstanceOf(valueAtNode(object, ctx))
+    const base = valueAtNode(object, ctx)
+    const whole = fbInstanceOf(memberValue(base, memberNode.text, object, ctx))
+    if (whole !== undefined) return { kind: 'instance', inst: whole }
+    receiver = boundInstance(base)
     member = memberNode.text
     fromBase = isSuper(object)
-  } else if (node === undefined && parts.length > 1) {
-    member = parts[parts.length - 1]
-    receiver = fbInstanceOf(valueAtPath(parts.slice(0, -1), ctx))
-    fromBase = parts.length === 2 && /^SUPER\^?$/i.test(parts[0])
-  } else if (node === undefined || node.type === 'identifier') {
-    receiver = ctx.self
-    member = callee
   } else {
-    return undefined
+    const whole = fbInstanceOf(node === undefined ? valueAtPath(parts, ctx) : valueAtNode(node, ctx))
+    if (whole !== undefined) return { kind: 'instance', inst: whole }
+    if (node === undefined && parts.length > 1) {
+      member = parts[parts.length - 1]
+      receiver = boundInstance(valueAtPath(parts.slice(0, -1), ctx))
+      fromBase = parts.length === 2 && isSuperText(parts[0])
+    } else if (node === undefined || node.type === 'identifier') {
+      receiver = ctx.self
+      member = callee
+    } else {
+      return undefined
+    }
   }
   if (receiver === undefined) return undefined
 
-  const chain = lineage(receiver.pou, ctx).slice(fromBase ? 1 : 0)
-  const method = findMethod(chain, member, ctx)
+  const chain = dispatchChain(receiver, fromBase, ctx)
+  const method = findMethod(chain, member, ctx.symbols)
   if (method !== undefined) return { kind: 'method', inst: receiver, method }
-  const action = findAction(chain, member, ctx)
+  const action = findAction(chain, member, ctx.symbols)
   if (action !== undefined) return { kind: 'action', inst: receiver, action }
   return undefined
+}
+
+// ---------------------------------------------------------------------------
+// Properties.
+// ---------------------------------------------------------------------------
+
+/** The slot of property `found` on `inst`. Accessors run from `ctx`, so they count against its depth; `node` locates their errors, else the declaration does. */
+function propertySlot(inst: FbInstance, found: Owned<Property>, ctx: EvalContext, node: Node | undefined): PropertySlot {
+  const { member: property, owner } = found
+  const accessor = (method: Method | undefined, name: string): Owned<Method> => {
+    if (method === undefined) throw error(ctx, node ?? property.bodyNode, `property '${inst.typeName}.${property.name}' has no ${name} accessor`)
+    return { member: method, owner }
+  }
+  return new PropertySlot({
+    read: () => invokeMethod(inst, accessor(property.get, 'GET'), [], ctx, node) as IecValue,
+    write: (value) => {
+      invokeMethod(inst, accessor(property.set, 'SET'), [{ value }], ctx, node)
+    },
+    declared: () => initialValue(property.typeNode, ctx, ctx.depth ?? 0, []),
+  })
+}
+
+/** `EvalContext.propertyOf`. The instance behind `base` may be a mock, whose accessors record the access instead of running. */
+function propertyOf(base: IecValue, name: string, fromBase: boolean, ctx: EvalContext, node: Node): Slot | undefined {
+  const inst = boundInstance(base)
+  if (inst === undefined) {
+    if (isInterfaceValue(base, ctx.symbols)) throw error(ctx, node, `interface variable '${node.text}' is not assigned`)
+    return undefined
+  }
+  const found = findProperty(dispatchChain(inst, fromBase, ctx), name, ctx.symbols)
+  return found === undefined ? undefined : propertySlot(inst, found, ctx, node)
+}
+
+/** A scope declaring the properties in `chain` by bare name, most derived first. */
+function propertyScope(inst: FbInstance, chain: Pou[], ctx: EvalContext): Scope {
+  const scope = new Scope(ctx.session.caseSensitive)
+  for (const owner of chain) {
+    for (const member of owner.properties) {
+      if (scope.get(member.name) === undefined) scope.declare(member.name, propertySlot(inst, { member, owner }, ctx, undefined), 'local')
+    }
+  }
+  return scope
 }
 
 // ---------------------------------------------------------------------------
@@ -523,7 +558,7 @@ function buildFrame(vars: VarEntry[], ctx: EvalContext, depth: number, fields?: 
 
 /** Every variable of `pou`, inherited ones (from the root base) first. */
 function instanceVars(pou: Pou, ctx: EvalContext): VarEntry[] {
-  return lineage(pou, ctx)
+  return lineage(pou, ctx.symbols)
     .reverse()
     .flatMap((p) => p.varBlocks.flatMap((b) => b.vars))
 }
@@ -579,7 +614,7 @@ function stubFrame(def: FbStubDef, ctx: EvalContext, depth: number, fields: Map<
 
 /** The `Pou` record standing in for a host-implemented FB. */
 function stubPou(def: FbStubDef): Pou {
-  return { name: def.name, kind: 'functionBlock', methods: [], varBlocks: [], implementsNames: [], file: '<host>', unitId: '<host>', isTest: false, actions: [] }
+  return { name: def.name, kind: 'functionBlock', methods: [], properties: [], varBlocks: [], implementsNames: [], baseInterfaces: [], isAbstract: false, file: '<host>', unitId: '<host>', isTest: false, actions: [] }
 }
 
 function instantiate(typeName: string, ctx: EvalContext, depth: number): FbInstance {
@@ -672,8 +707,13 @@ function chainOf(scopes: Scope[], ctx: EvalContext): ScopeChainImpl {
   return new ScopeChainImpl([...scopes, ...(ctx.globals ?? [])])
 }
 
-function instanceContext(inst: FbInstance, ctx: EvalContext, depth: number, local?: Scope): EvalContext {
-  return { ...ctx, chain: chainOf(local === undefined ? [inst.scope] : [local, inst.scope], ctx), self: inst, depth }
+/** The context running code of `owner` (a POU in `inst`'s chain) on `inst`, with `local` in front of the instance scope. */
+function instanceContext(inst: FbInstance, ctx: EvalContext, depth: number, local?: Scope, owner: Pou = inst.pou): EvalContext {
+  const scopes = local === undefined ? [inst.scope] : [local, inst.scope]
+  const inner: EvalContext = { ...ctx, chain: chainOf(scopes, ctx), self: inst, owner, depth }
+  const chain = lineage(inst.pou, ctx.symbols)
+  if (chain.some((p) => p.properties.length > 0)) inner.chain = chainOf([...scopes, propertyScope(inst, chain, inner)], ctx)
+  return inner
 }
 
 /** Declare the result variable named after the function/method; `undefined` when it has no return type. */
@@ -724,7 +764,8 @@ function callFunction(pou: Pou, args: CallArg[], ctx: EvalContext, node: Node | 
 }
 
 /** A METHOD of `inst`: fresh method variables in front of the instance scope, `THIS` bound to `inst`. */
-function invokeMethod(inst: FbInstance, method: Method, args: CallArg[], ctx: EvalContext, node?: Node): IecValue | undefined {
+function invokeMethod(inst: FbInstance, found: Owned<Method>, args: CallArg[], ctx: EvalContext, node?: Node): IecValue | undefined {
+  const { member: method, owner } = found
   const what = `${inst.typeName}.${method.name}`
   const depth = enter(ctx, node, what)
   const locNode = node ?? method.bodyNode
@@ -733,7 +774,7 @@ function invokeMethod(inst: FbInstance, method: Method, args: CallArg[], ctx: Ev
   try {
     const outputs = bindArgs(frame.params, args, ctx, node, locNode, what)
     if (inst.intercept !== undefined) inst.intercept(method.name, recordedArgs(frame.params))
-    else runBody(bodyStatements(method.bodyNode), instanceContext(inst, ctx, depth, frame.scope), method.bodyNode)
+    else runBody(bodyStatements(method.bodyNode), instanceContext(inst, ctx, depth, frame.scope, owner), method.bodyNode)
     copyOutputs(outputs, ctx, locNode)
   } finally {
     disposeAll(frame.children, ctx)
@@ -742,12 +783,13 @@ function invokeMethod(inst: FbInstance, method: Method, args: CallArg[], ctx: Ev
 }
 
 /** An ACTION of `inst`: its body runs directly in the instance scope. */
-function invokeAction(inst: FbInstance, action: Action, args: CallArg[], ctx: EvalContext, node: Node | undefined): undefined {
+function invokeAction(inst: FbInstance, found: Owned<Action>, args: CallArg[], ctx: EvalContext, node: Node | undefined): undefined {
+  const { member: action, owner } = found
   const what = `${inst.typeName}.${action.name}`
   if (args.length > 0) throw error(ctx, node, `action '${what}' takes no arguments`)
   const depth = enter(ctx, node, what)
   if (inst.intercept !== undefined) inst.intercept(action.name, {})
-  else runBody(action.bodyNodes, instanceContext(inst, ctx, depth), action.bodyNodes[0] as Node | undefined)
+  else runBody(action.bodyNodes, instanceContext(inst, ctx, depth, undefined, owner), action.bodyNodes[0] as Node | undefined)
   return undefined
 }
 
