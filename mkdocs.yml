@@ -1,8 +1,8 @@
-site_name: "{{PROJECT_NAME}}"
-site_description: "{{DESCRIPTION}}"
-site_url: "https://{{OWNER}}.github.io/{{PROJECT_NAME}}/"
-repo_url: "https://github.com/{{OWNER}}/{{PROJECT_NAME}}"
-repo_name: "{{OWNER}}/{{PROJECT_NAME}}"
+site_name: "plc-st-test"
+site_description: "Unit test runner for IEC 61131-3 Structured Text. No PLC runtime, no license, no Windows required."
+site_url: "https://heytalepazguato.github.io/plc-st-test/"
+repo_url: "https://github.com/HeytalePazguato/plc-st-test"
+repo_name: "HeytalePazguato/plc-st-test"
 edit_uri: edit/main/docs/
 
 docs_dir: docs
@@ -60,6 +60,8 @@ nav:
   - Ingestor contract: ingestor-contract.md
   - Results schema: results-schema.md
 
-# Private planning docs live in docs/secret (gitignored); never render them.
+# Private planning docs live in docs/secret (gitignored); never render them. The docs toolchain lock files are build inputs, not pages.
 exclude_docs: |
   secret/
+  requirements.in
+  requirements.txt

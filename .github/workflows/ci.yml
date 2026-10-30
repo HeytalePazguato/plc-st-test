@@ -74,5 +74,5 @@ jobs:
         run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
 
       - name: zizmor
-        # Scoped to ci.yml until pages/prerelease/release.yml are rewritten and pinned (later tasks); widen to .github/ then.
-        run: pipx run zizmor==1.31.1 --no-online-audits .github/workflows/ci.yml
+        # Scoped to the pinned workflows until prerelease/release.yml are rewritten (later tasks); widen to .github/ then.
+        run: pipx run zizmor==1.31.1 --no-online-audits .github/workflows/ci.yml .github/workflows/pages.yml

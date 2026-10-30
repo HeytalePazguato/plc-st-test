@@ -108,9 +108,11 @@ jobs:
           existing=$(git tag --list "v${base}-${stage}.*" | wc -l | tr -d ' ')
           next=$((existing + 1))
           tag="v${base}-${stage}.${next}"
-          echo "base=$base"   >> "$GITHUB_OUTPUT"
-          echo "stage=$stage" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag"     >> "$GITHUB_OUTPUT"
+          {
+            echo "base=$base"
+            echo "stage=$stage"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
           echo "Selected $tag"
 
       - name: Idempotence guard

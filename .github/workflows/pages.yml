@@ -1,13 +1,6 @@
 name: pages
 
-# Build and deploy the GitHub Pages site from /docs using MkDocs Material.
-#
-# Triggers on changes under /docs (or mkdocs.yml / this workflow itself) on
-# develop or main. develop pushes only run the build job (validation); main
-# pushes additionally deploy. This matches the GitHub Pages environment's
-# default protection (main branch only).
-#
-# Delete this workflow + mkdocs.yml + docs/ if you don't want a docs site.
+# Builds the MkDocs Material site from docs/ on every push to develop or main that touches the docs (validation), and deploys it to GitHub Pages only from main (the github-pages environment is protected to main). The toolchain is installed from the hash-locked docs/requirements.txt; regenerate it from docs/requirements.in with the command at the top of that file.
 on:
   push:
     branches: [develop, main]
@@ -17,45 +10,52 @@ on:
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+permissions: {}
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: '3.12'
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
           cache: pip
-      - name: Install MkDocs Material
-        run: pip install mkdocs-material
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install docs toolchain
+        run: pip install --require-hashes -r docs/requirements.txt
+
       - name: Build site
         run: mkdocs build --strict --site-dir _site
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true        # auto-create the Pages site on first run
-      - uses: actions/upload-pages-artifact@v3
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: ./_site
 
   deploy:
     needs: build
-    # Only deploy from main; develop pushes still run the build job to
-    # validate the site, but the github-pages environment is protected to
-    # main only.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        with:
+          enablement: true
+
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

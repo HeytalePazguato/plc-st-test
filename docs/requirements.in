@@ -1,0 +1,3 @@
+# Docs site toolchain. Regenerate the lock with: uv pip compile docs/requirements.in --universal --python-version 3.12 --generate-hashes -o docs/requirements.txt
+mkdocs==1.6.1
+mkdocs-material==9.8.0

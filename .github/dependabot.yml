@@ -46,3 +46,14 @@ updates:
     target-branch: "develop"
     labels:
       - "dependencies"
+
+  # pip: the hash-locked docs site toolchain (docs/requirements.txt, compiled from docs/requirements.in).
+  - package-ecosystem: "pip"
+    directory: "/docs"
+    schedule:
+      interval: "monthly"
+    target-branch: "develop"
+    labels:
+      - "dependencies"
+    cooldown:
+      default-days: 7
