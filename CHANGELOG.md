@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Converted the repository to a pnpm workspace monorepo: the existing engine moved (history preserved via `git mv`) to `packages/core` as `@plc-st/core`, the root `package.json` is now the private `plc-st-test-monorepo` workspace root, builds use TypeScript project references (`tsc -b` with `tsconfig.base.json`), and Vitest runs per-package via `test.projects`. Toolchain bumped to pnpm 11.28.9, Node >=24, TypeScript ~6.0.3, Vitest 5, ESLint 10, typescript-eslint 8.72, `@types/node` ~24, and `web-tree-sitter` ~0.27.1.
 - Pin `tree-sitter-iec61131-3-st` to 0.1.2, whose external scanner reserves the `END_*` terminators; a forgotten `END_IF` now yields a precise `MISSING "END_IF"` node instead of collapsing the whole POU into a single error.
 - Branch flow diagram now shows two paths to `main`: `release/*` for planned releases and `hotfix/*` for emergency patches. PRs to `main` must originate from one of these two — never from `develop` directly, because the `delete_branch_on_merge` setting would wipe `develop` on the remote on every release.
 
