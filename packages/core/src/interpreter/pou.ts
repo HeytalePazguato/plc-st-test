@@ -446,7 +446,7 @@ function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children:
     children.push(inst)
     return inst.value
   }
-  const value = defaultValue(typeNode, ctx.symbols, ctx.session, constEvaluator(ctx))
+  const value = defaultValue(typeNode, ctx.symbols, constEvaluator(ctx), ctx.session)
   if (typeNode.type === 'array_type' && value.kind === 'array') {
     const elemNode = typeNode.childForFieldName('element_type')
     const elemFb = elemNode === null ? undefined : fbTypeOf(elemNode, ctx)

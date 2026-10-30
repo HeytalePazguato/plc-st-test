@@ -6,6 +6,7 @@ import { loadGrammar, baseGrammarPath } from '../src/parser/parse.js'
 import { buildSymbolTableFromProject } from '../src/symbols/table.js'
 import { Scope, ScopeChainImpl } from '../src/interpreter/scope.js'
 import { defaultValue, type IecValue } from '../src/interpreter/values.js'
+import { testConstEval } from './helpers/const-eval.js'
 import { IecType } from '../src/interpreter/numeric.js'
 import { evalExpression, evalLValue, evalCall } from '../src/interpreter/expressions.js'
 import type { CallPou, EvalContext } from '../src/interpreter/context.js'
@@ -67,7 +68,7 @@ function prepare(expr: string, env: Env = {}): Prepared {
   if (pou?.bodyNode === undefined) throw new Error('Main not found')
   const scope = new Scope(caseSensitive)
   for (const block of pou.varBlocks) {
-    for (const v of block.vars) scope.declare(v.name, { value: defaultValue(v.typeNode, symbols) }, v.kind)
+    for (const v of block.vars) scope.declare(v.name, { value: defaultValue(v.typeNode, symbols, testConstEval(symbols)) }, v.kind)
   }
   env.init?.(scope)
   const stmt = pou.bodyNode.childrenForFieldName('body').find((n) => n.type === 'assignment_statement')

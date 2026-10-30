@@ -3,6 +3,7 @@ import type { Language } from 'web-tree-sitter'
 import { loadGrammar, baseGrammarPath, parseSource, walk } from '../src/parser/parse.js'
 import type { Node } from 'web-tree-sitter'
 import { IecType } from '../src/interpreter/numeric.js'
+import { testConstEval } from './helpers/const-eval.js'
 import {
   defaultValue,
   cloneValue,
@@ -44,7 +45,7 @@ describe('values', () => {
 
   it('ARRAY[1..3] OF INT default = three INT zeros with dims [[1,3]]', () => {
     const node = varType('arr : ARRAY[1..3] OF INT;')
-    const v = defaultValue(node, emptyResolver)
+    const v = defaultValue(node, emptyResolver, testConstEval(emptyResolver))
     expect(v.kind).toBe('array')
     if (v.kind !== 'array') throw new Error('expected array')
     expect(v.elemType).toBe(IecType.INT)
@@ -80,7 +81,7 @@ describe('values', () => {
           : undefined,
     }
     const node = varType('s : TS;')
-    const v = defaultValue(node, resolver)
+    const v = defaultValue(node, resolver, testConstEval(resolver))
     expect(v.kind).toBe('struct')
     if (v.kind !== 'struct') throw new Error('expected struct')
     expect(v.typeName).toBe('TS')
@@ -103,6 +104,7 @@ describe('values', () => {
         'structure_type_inline',
       ),
       emptyResolver,
+      testConstEval(emptyResolver),
     )
     expect(v.kind).toBe('struct')
     if (v.kind !== 'struct') throw new Error('expected struct')
@@ -115,7 +117,7 @@ describe('values', () => {
 
   it("STRING(10) with initializer 'hello world' truncates to 'hello worl'", () => {
     const node = varType("s : STRING(10) := 'hello world';")
-    const v = defaultValue(node, emptyResolver)
+    const v = defaultValue(node, emptyResolver, testConstEval(emptyResolver))
     expect(v).toEqual({
       kind: 'scalar',
       type: IecType.STRING,
@@ -125,22 +127,22 @@ describe('values', () => {
   })
 
   it('elementary defaults: BOOL false, REAL 0, TIME 0n, LINT 0n', () => {
-    expect(defaultValue(varType('b : BOOL;'), emptyResolver)).toEqual({
+    expect(defaultValue(varType('b : BOOL;'), emptyResolver, testConstEval(emptyResolver))).toEqual({
       kind: 'scalar',
       type: IecType.BOOL,
       value: false,
     })
-    expect(defaultValue(varType('r : REAL;'), emptyResolver)).toEqual({
+    expect(defaultValue(varType('r : REAL;'), emptyResolver, testConstEval(emptyResolver))).toEqual({
       kind: 'scalar',
       type: IecType.REAL,
       value: 0,
     })
-    expect(defaultValue(varType('t : TIME;'), emptyResolver)).toEqual({
+    expect(defaultValue(varType('t : TIME;'), emptyResolver, testConstEval(emptyResolver))).toEqual({
       kind: 'scalar',
       type: IecType.TIME,
       value: 0n,
     })
-    expect(defaultValue(varType('l : LINT;'), emptyResolver)).toEqual({
+    expect(defaultValue(varType('l : LINT;'), emptyResolver, testConstEval(emptyResolver))).toEqual({
       kind: 'scalar',
       type: IecType.LINT,
       value: 0n,
@@ -162,7 +164,7 @@ describe('values', () => {
             }
           : undefined,
     }
-    const v = defaultValue(varType('c : EColor;'), resolver)
+    const v = defaultValue(varType('c : EColor;'), resolver, testConstEval(resolver))
     expect(v).toEqual({ kind: 'enum', typeName: 'EColor', value: 0 })
   })
 
@@ -185,7 +187,7 @@ describe('values', () => {
             }
           : undefined,
     }
-    const v = defaultValue(varType('a : TAlias;'), resolver)
+    const v = defaultValue(varType('a : TAlias;'), resolver, testConstEval(resolver))
     expect(v).toEqual({ kind: 'scalar', type: IecType.INT, value: 7 })
   })
 
@@ -193,6 +195,7 @@ describe('values', () => {
     const original = defaultValue(
       varType('arr : ARRAY[1..3] OF INT;'),
       emptyResolver,
+      testConstEval(emptyResolver),
     )
     const clone = cloneValue(original)
     expect(valueEquals(original, clone)).toBe(true)

@@ -3,6 +3,7 @@ import type { Language, Node } from 'web-tree-sitter'
 import { loadGrammar, baseGrammarPath, parseSource, walk } from '../src/parser/parse.js'
 import { IecType } from '../src/interpreter/numeric.js'
 import { IecRuntimeError } from '../src/errors.js'
+import { testConstEval } from './helpers/const-eval.js'
 import { defaultValue, type IecValue, type ResolvedType, type TypeResolver } from '../src/interpreter/values.js'
 
 let lang: Language
@@ -36,7 +37,7 @@ function ints(v: IecValue): unknown[] {
 
 function init(decl: string): IecValue {
   const { node, resolver } = varType(decl)
-  return defaultValue(node, resolver)
+  return defaultValue(node, resolver, testConstEval(resolver))
 }
 
 describe('array initializers', () => {
@@ -62,8 +63,13 @@ describe('array initializers', () => {
     expect(ints(v)).toEqual([1, 2, 3, 4, 5, 6])
   })
 
-  it('wraps, frounds and truncates elements through the element type', () => {
-    expect(ints(init('a : ARRAY[1..2] OF SINT := [200, -1];'))[0]).toBe(-56)
+  it('rejects an out-of-range element instead of wrapping it', () => {
+    expect(() => init('a : ARRAY[1..2] OF SINT := [200, -1];')).toThrow(IecRuntimeError)
+    expect(() => init('a : ARRAY[1..2] OF SINT := [200, -1];')).toThrow(/out of range for SINT/)
+    expect(ints(init('a : ARRAY[1..2] OF SINT := [127, -1];'))).toEqual([127, -1])
+  })
+
+  it('frounds and truncates elements through the element type', () => {
     expect(ints(init('a : ARRAY[1..1] OF REAL := [0.1];'))).toEqual([Math.fround(0.1)])
     const s = init("a : ARRAY[1..2] OF STRING(3) := ['abcdef', 'x'];")
     expect(ints(s)).toEqual(['abc', 'x'])
@@ -82,24 +88,24 @@ describe('array initializers', () => {
   it('counts the allocation before building a huge repetition-initialised array', () => {
     const { node, resolver } = varType('big : ARRAY[1..1000000] OF INT := [5];')
     const meter = { allocation: 0, limits: { maxAllocatedElements: 100, maxStringLength: 255 } }
-    expect(() => defaultValue(node, resolver, meter)).toThrow(/allocation limit/)
+    expect(() => defaultValue(node, resolver, testConstEval(resolver), meter)).toThrow(/allocation limit/)
   })
 
   it('initialises struct variables and arrays of structs', () => {
     const types = 'TYPE S : STRUCT x : INT; y : INT := 9; END_STRUCT; END_TYPE'
     const sv = varType('d : S := (x := 4);', types)
-    const s = defaultValue(sv.node, sv.resolver)
+    const s = defaultValue(sv.node, sv.resolver, testConstEval(sv.resolver))
     expect(s.kind === 'struct' && [...s.fields.values()].map((f) => (f.kind === 'scalar' ? f.value : null))).toEqual([4, 9])
     const av = varType('c : ARRAY[1..2] OF S;', types)
-    const a = defaultValue(av.node, av.resolver)
+    const a = defaultValue(av.node, av.resolver, testConstEval(av.resolver))
     expect(a.kind === 'array' && a.data.length).toBe(2)
   })
 
   it('still defaults scalars and enums', () => {
     const e = varType('e : INT := 3;')
-    expect(defaultValue(e.node, e.resolver)).toEqual({ kind: 'scalar', type: IecType.INT, value: 3 })
+    expect(defaultValue(e.node, e.resolver, testConstEval(e.resolver))).toEqual({ kind: 'scalar', type: IecType.INT, value: 3 })
     const resolver: TypeResolver = { resolveType: () => ({ kind: 'enum', typeName: 'E', members: [{ name: 'A', value: 0 }, { name: 'B', value: 1 }] }) }
-    const ev = varType('x : E := E#B;')
-    expect(defaultValue(ev.node, resolver)).toMatchObject({ kind: 'enum', typeName: 'E' })
+    const ev = varType('x : E := E.B;')
+    expect(defaultValue(ev.node, resolver, testConstEval(resolver))).toEqual({ kind: 'enum', typeName: 'E', value: 1 })
   })
 })

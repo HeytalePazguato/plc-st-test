@@ -105,51 +105,14 @@ function evalIntLiteral(text: string, big: boolean): number | bigint {
   return neg ? -v : v
 }
 
-/** Strip the surrounding quotes from a `string_literal` node's text. */
-function stringLiteralText(text: string): string {
-  if (text.length >= 2) {
-    const first = text[0]
-    const last = text[text.length - 1]
-    if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
-      return text.slice(1, -1)
-    }
-  }
-  return text
-}
-
 /**
- * Scalar value for an elementary `type`, honouring `initNode` when present. With a constant evaluator the initializer is a full IEC constant expression (negation, typed/based literals, arithmetic, constant references, enum members); without one only plain literals are understood and anything else keeps the default.
+ * Scalar value for an elementary `type`, honouring `initNode` when present. The initializer is a full IEC constant expression (negation, typed/based literals, arithmetic, constant references, enum members) evaluated by the injected `ConstEvaluator`.
  *
  * Out-of-range constants are rejected rather than wrapped: IEC 61131-3 makes an initializer that does not fit its declared type a compile-time error (e.g. `SINT := -129`), so this raises an `IecRuntimeError` naming the variable instead of silently truncating. Run-time assignments still wrap through `storeValue`.
  */
 function scalarValue(type: IecType, initNode: Node | undefined, env: InitEnv): number | bigint | boolean | string {
-  if (initNode === undefined) {
-    return scalarDefault(type)
-  }
-  if (env.constEval !== undefined) return constantScalar(type, initNode, env, env.constEval)
-  switch (initNode.type) {
-    case 'boolean_literal':
-      return initNode.text.toUpperCase() === 'TRUE'
-    case 'integer_literal': {
-      if (type === IecType.REAL) return froundReal(Number(initNode.text.replace(/_/g, '')))
-      if (type === IecType.LREAL) return Number(initNode.text.replace(/_/g, ''))
-      if (type === IecType.STRING || type === IecType.WSTRING) return initNode.text
-      if (type === IecType.BOOL) return initNode.text.trim() !== '0'
-      {
-        const n = evalIntLiteral(initNode.text, isBigIntType(type) || type === IecType.TIME)
-        return isIntType(type) ? wrapInt(n, type) : n
-      }
-    }
-    case 'real_literal': {
-      const n = Number(initNode.text.replace(/_/g, ''))
-      return type === IecType.REAL ? froundReal(n) : n
-    }
-    case 'string_literal':
-      return stringLiteralText(initNode.text)
-    default:
-      // time_literal, typed_literal, identifier, etc.: keep the IEC default.
-      return scalarDefault(type)
-  }
+  if (initNode === undefined) return scalarDefault(type)
+  return constantScalar(type, initNode, env, env.constEval)
 }
 
 /** Evaluate `initNode` as a constant expression and convert the result to the elementary `type`; a mismatched or out-of-range constant is an error naming the variable. */
@@ -228,12 +191,12 @@ function findInitializer(typeNode: Node): Node | undefined {
 /**
  * Produce the IEC initial value for the type that `typeNode` describes. If the owning declaration carries an initializer it is honoured, otherwise the IEC default for the type is used. Named types are looked up through `resolver`.
  */
-export function defaultValue(typeNode: Node, resolver: TypeResolver, meter?: AllocationMeter, constEval?: ConstEvaluator): IecValue {
+export function defaultValue(typeNode: Node, resolver: TypeResolver, constEval: ConstEvaluator, meter?: AllocationMeter): IecValue {
   return buildDefault(typeNode, findInitializer(typeNode), { resolver, meter, constEval, owner: ownerName(typeNode) })
 }
 
 /**
- * Evaluates VAR initializers as IEC constant expressions. It is injected by the interpreter (which owns the expression evaluator and the scope that constants live in) so this module never imports `expressions.ts`; without one only plain literals are honoured.
+ * Evaluates VAR initializers as IEC constant expressions. It is injected by the interpreter (which owns the expression evaluator and the scope that constants live in) so this module never imports `expressions.ts`. Every path that builds or resets a variable default must supply one so all of them share the same semantics.
  */
 export interface ConstEvaluator {
   /** Evaluate a constant expression node; `enumHint` names the enum type a bare member resolves against first. */
@@ -246,7 +209,7 @@ export interface ConstEvaluator {
 interface InitEnv {
   resolver: TypeResolver
   meter?: AllocationMeter
-  constEval?: ConstEvaluator
+  constEval: ConstEvaluator
   owner: string
 }
 
@@ -318,11 +281,7 @@ function stringDefault(typeNode: Node, initNode: Node | undefined, env: InitEnv)
   }
   chargeAllocation(meter, 1)
   let value = ''
-  if (initNode !== undefined && env.constEval !== undefined) {
-    value = constantScalar(type, initNode, env, env.constEval) as string
-  } else if (initNode !== undefined && initNode.type === 'string_literal') {
-    value = stringLiteralText(initNode.text)
-  }
+  if (initNode !== undefined) value = constantScalar(type, initNode, env, env.constEval) as string
   if (maxLen === undefined) return { kind: 'scalar', type, value }
   return { kind: 'scalar', type, value: value.slice(0, maxLen), maxLength: maxLen }
 }
@@ -490,26 +449,11 @@ function namedDefault(name: string, initNode: Node | undefined, env: InitEnv): I
 }
 
 function enumDefaultValue(resolved: EnumTypeInfo, initNode: Node | undefined, env: InitEnv): number {
-  if (initNode !== undefined && env.constEval !== undefined) {
-    const v = evaluateConstant(initNode, resolved.typeName, env, env.constEval)
-    if (v.kind === 'enum') return v.value
-    if (v.kind === 'scalar' && isIntType(v.type)) return Number(v.value)
-    throw env.constEval.error(initNode, `cannot initialize '${env.owner}' (${resolved.typeName}) with ${v.kind === 'scalar' ? v.type : v.kind}`)
-  }
-  if (initNode !== undefined) {
-    if (
-      initNode.type === 'identifier' ||
-      initNode.type === 'qualified_identifier' ||
-      initNode.type === 'member_access_expression'
-    ) {
-      const memberName = initNode.text.split('.').pop() ?? initNode.text
-      const member = resolved.members.find((m) => m.name === memberName)
-      if (member !== undefined) return member.value
-    } else if (initNode.type === 'integer_literal') {
-      return Number(evalIntLiteral(initNode.text, false))
-    }
-  }
-  return resolved.members.length > 0 ? resolved.members[0].value : 0
+  if (initNode === undefined) return resolved.members.length > 0 ? resolved.members[0].value : 0
+  const v = evaluateConstant(initNode, resolved.typeName, env, env.constEval)
+  if (v.kind === 'enum') return v.value
+  if (v.kind === 'scalar' && isIntType(v.type)) return Number(v.value)
+  throw env.constEval.error(initNode, `cannot initialize '${env.owner}' (${resolved.typeName}) with ${v.kind === 'scalar' ? v.type : v.kind}`)
 }
 
 // ---------------------------------------------------------------------------

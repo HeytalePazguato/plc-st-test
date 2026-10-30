@@ -6,6 +6,7 @@ import { loadGrammar, baseGrammarPath } from '../src/parser/parse.js'
 import { buildSymbolTableFromProject } from '../src/symbols/table.js'
 import { Scope, ScopeChainImpl } from '../src/interpreter/scope.js'
 import { defaultValue, type IecValue } from '../src/interpreter/values.js'
+import { testConstEval } from './helpers/const-eval.js'
 import { IecType } from '../src/interpreter/numeric.js'
 import { execBody, execStatement } from '../src/interpreter/statements.js'
 import type { CallPou, ControlSignal, EvalContext } from '../src/interpreter/context.js'
@@ -66,7 +67,7 @@ function prepare(body: string[], env: Env = {}): Omit<Run, 'signal'> {
   if (pou?.bodyNode === undefined) throw new Error('Main not found')
   const scope = new Scope(caseSensitive)
   for (const block of pou.varBlocks) {
-    for (const v of block.vars) scope.declare(v.name, { value: defaultValue(v.typeNode, symbols) }, v.kind)
+    for (const v of block.vars) scope.declare(v.name, { value: defaultValue(v.typeNode, symbols, testConstEval(symbols)) }, v.kind)
   }
   const session = new Session({ caseSensitive })
   const callPou: CallPou = env.callPou ?? ((callee) => {

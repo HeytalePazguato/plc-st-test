@@ -110,6 +110,54 @@ describe('CycleEngine', () => {
     expect(field(r.suite, 'nTemp')).toBe(1)
   })
 
+  it('resets a VAR_TEMP to its constant-expression initializer (:= -5) every cycle', () => {
+    const src = `
+FUNCTION_BLOCK TEST_Temp
+VAR
+  nSeen : INT;
+  nRuns : INT;
+END_VAR
+VAR_TEMP
+  nScratch : INT := -5;
+END_VAR
+METHOD Cycle
+nSeen := nScratch;
+nRuns := nRuns + 1;
+nScratch := 99;
+END_METHOD
+END_FUNCTION_BLOCK
+`
+    const r = load(src, 'TEST_Temp')
+    r.engine.runCycles(4, r.suite, r.ctx)
+    expect(field(r.suite, 'nRuns')).toBe(4)
+    expect(field(r.suite, 'nSeen')).toBe(-5)
+  })
+
+  it('resets an enum-initialised VAR_TEMP to that member every cycle', () => {
+    const src = `
+TYPE E_S : (IDLE := 0, S1, S2, S3, DONE) := IDLE;
+END_TYPE
+
+FUNCTION_BLOCK TEST_TempEnum
+VAR
+  nHits : INT;
+END_VAR
+VAR_TEMP
+  eScratch : E_S := E_S.S2;
+END_VAR
+METHOD Cycle
+IF eScratch = E_S.S2 THEN
+  nHits := nHits + 1;
+END_IF
+eScratch := E_S.DONE;
+END_METHOD
+END_FUNCTION_BLOCK
+`
+    const r = load(src, 'TEST_TempEnum')
+    r.engine.runCycles(3, r.suite, r.ctx)
+    expect(field(r.suite, 'nHits')).toBe(3)
+  })
+
   it('a suite without a Cycle method only advances time', () => {
     const r = load(NO_CYCLE, 'TEST_Empty')
     r.engine.runCycles(3, r.suite, r.ctx)

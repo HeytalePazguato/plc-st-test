@@ -9,7 +9,7 @@
 import type { Node } from 'web-tree-sitter'
 import type { Slot } from '@plc-st/plugin-api'
 import type { ScopeChain } from './context.js'
-import { defaultValue, type TypeResolver } from './values.js'
+import { defaultValue, type ConstEvaluator, type TypeResolver } from './values.js'
 import type { VarKind } from '../symbols/table.js'
 import { IecError } from '../errors.js'
 import { caseKey } from '../case.js'
@@ -73,15 +73,16 @@ export class ScopeChainImpl implements ScopeChain {
 }
 
 /**
- * Reinitialise every VAR_TEMP entry of `scope` to its declared default (called at the start of each body invocation). Other kinds — notably VAR, which persists across invocations — are untouched. The existing `Slot` object is kept and only its `value` replaced, so any alias to it stays valid.
+ * Reinitialise every VAR_TEMP entry of `scope` to its declared default, evaluating initializers through `constEval` exactly as instantiation does (called at the start of each body invocation). Other kinds — notably VAR, which persists across invocations — are untouched. The existing `Slot` object is kept and only its `value` replaced, so any alias to it stays valid.
  */
 export function resetTemps(
   scope: Scope,
   typeOf: (name: string) => Node,
   resolver: TypeResolver,
+  constEval: ConstEvaluator,
 ): void {
   for (const [name, slot, kind] of scope.entries()) {
     if (kind !== 'temp') continue
-    slot.value = defaultValue(typeOf(name), resolver)
+    slot.value = defaultValue(typeOf(name), resolver, constEval)
   }
 }

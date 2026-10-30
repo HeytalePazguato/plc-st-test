@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import type { Language, Node } from 'web-tree-sitter'
 import { loadGrammar, baseGrammarPath, parseSource, walk } from '../src/parser/parse.js'
+import { testConstEval } from './helpers/const-eval.js'
 import { IecType } from '../src/interpreter/numeric.js'
 import { defaultValue, type IecValue, type TypeResolver } from '../src/interpreter/values.js'
 import { Scope, ScopeChainImpl, resetTemps } from '../src/interpreter/scope.js'
@@ -58,7 +59,7 @@ function fbScope(callerSlot: Slot, caseSensitive = false) {
   const scope = new Scope(caseSensitive)
   for (const [name, { typeNode, kind }] of decls) {
     if (kind === 'inout') scope.declare(name, callerSlot, kind)
-    else scope.declare(name, { value: defaultValue(typeNode, emptyResolver) }, kind)
+    else scope.declare(name, { value: defaultValue(typeNode, emptyResolver, testConstEval(emptyResolver)) }, kind)
   }
   const typeOf = (name: string): Node => {
     const d = decls.get(name)
@@ -89,7 +90,7 @@ describe('scope chain', () => {
   it('VAR persists across two body invocations of the same scope', () => {
     const { scope, typeOf } = fbScope({ value: int(0) })
     for (let i = 0; i < 2; i++) {
-      resetTemps(scope, typeOf, emptyResolver)
+      resetTemps(scope, typeOf, emptyResolver, testConstEval(emptyResolver))
       const count = scope.get('count')!
       const v = count.value
       if (v.kind !== 'scalar') throw new Error('expected scalar')
@@ -108,7 +109,7 @@ describe('scope chain', () => {
     flag.value = { kind: 'scalar', type: IecType.BOOL, value: true }
     scope.get('count')!.value = int(11)
 
-    resetTemps(scope, typeOf, emptyResolver)
+    resetTemps(scope, typeOf, emptyResolver, testConstEval(emptyResolver))
 
     expect(scope.get('tmp')).toBe(tmp)
     expect(tmp.value).toEqual(int(7))
@@ -119,7 +120,7 @@ describe('scope chain', () => {
   it('resetTemps never touches an aliased VAR_IN_OUT slot', () => {
     const callerSlot: Slot = { value: int(3) }
     const { scope, typeOf } = fbScope(callerSlot)
-    resetTemps(scope, typeOf, emptyResolver)
+    resetTemps(scope, typeOf, emptyResolver, testConstEval(emptyResolver))
     expect(callerSlot.value).toEqual(int(3))
   })
 
