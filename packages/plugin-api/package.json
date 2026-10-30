@@ -10,6 +10,7 @@
     "url": "git+https://github.com/HeytalePazguato/plc-st-test.git",
     "directory": "packages/plugin-api"
   },
+  "sideEffects": false,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -29,5 +30,16 @@
   },
   "dependencies": {
     "@plc-st/project-model": "workspace:^"
+  },
+  "peerDependencies": {
+    "web-tree-sitter": "~0.27.1"
+  },
+  "peerDependenciesMeta": {
+    "web-tree-sitter": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "web-tree-sitter": "~0.27.1"
   }
 }

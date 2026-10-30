@@ -1,52 +1,21 @@
 /**
  * Runtime value model for the IEC 61131-3 interpreter.
  *
- * A value is one of four shapes: a scalar (elementary type), an array, a struct, or an enum. `defaultValue` walks a grammar type-specifier node and produces the IEC initial value for it (honouring a declared initializer when the surrounding declaration carries one). The `TypeResolver` interface is declared here — rather than imported from the symbol table — so the symbol table can implement it without creating a circular import.
+ * A value is one of four shapes: a scalar (elementary type), an array, a struct, or an enum. `defaultValue` walks a grammar type-specifier node and produces the IEC initial value for it (honouring a declared initializer when the surrounding declaration carries one). The value and resolver types (`IecValue`, `TypeResolver`, …) are declared in `@plc-st/plugin-api` so plugins share them; they are re-exported here so existing core imports keep working.
  */
 
 import type { Node } from 'web-tree-sitter'
+import type { EnumTypeInfo, IecValue, TypeResolver } from '@plc-st/plugin-api'
 import { IecType, isBigIntType, froundReal } from './numeric.js'
 
-/** A runtime value: scalar, array, struct, or enum. */
-export type IecValue =
-  | { kind: 'scalar'; type: IecType; value: number | bigint | boolean | string }
-  | {
-      kind: 'array'
-      elemType: IecType | string
-      dims: [number, number][]
-      data: IecValue[]
-    }
-  | { kind: 'struct'; typeName: string; fields: Map<string, IecValue> }
-  | { kind: 'enum'; typeName: string; value: number }
-
-// ---------------------------------------------------------------------------
-// Resolver interface (implemented by the cross-file symbol table).
-// ---------------------------------------------------------------------------
-
-export interface StructTypeInfo {
-  kind: 'struct'
-  typeName: string
-  fields: { name: string; typeNode: Node; initNode?: Node }[]
-}
-
-export interface EnumTypeInfo {
-  kind: 'enum'
-  typeName: string
-  members: { name: string; value: number }[]
-}
-
-export interface AliasTypeInfo {
-  kind: 'alias'
-  typeName: string
-  typeNode: Node
-  initNode?: Node
-}
-
-export type ResolvedType = StructTypeInfo | EnumTypeInfo | AliasTypeInfo
-
-export interface TypeResolver {
-  resolveType(name: string): ResolvedType | undefined
-}
+export type {
+  AliasTypeInfo,
+  EnumTypeInfo,
+  IecValue,
+  ResolvedType,
+  StructTypeInfo,
+  TypeResolver,
+} from '@plc-st/plugin-api'
 
 // ---------------------------------------------------------------------------
 // Elementary type name -> IecType.

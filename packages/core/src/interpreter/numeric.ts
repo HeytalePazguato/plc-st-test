@@ -8,29 +8,32 @@
  *   - 64-bit types (LINT/ULINT/LWORD) exceed the safe-integer range and are represented as `bigint`.
  */
 
+import type { IecType as IecTypeName } from '@plc-st/plugin-api'
 import { IecRuntimeError } from '../errors.js'
 
-/** Elementary IEC 61131-3 types (string enum for stable, debuggable values). */
-export enum IecType {
-  BOOL = 'BOOL',
-  BYTE = 'BYTE',
-  WORD = 'WORD',
-  DWORD = 'DWORD',
-  LWORD = 'LWORD',
-  SINT = 'SINT',
-  USINT = 'USINT',
-  INT = 'INT',
-  UINT = 'UINT',
-  DINT = 'DINT',
-  UDINT = 'UDINT',
-  LINT = 'LINT',
-  ULINT = 'ULINT',
-  REAL = 'REAL',
-  LREAL = 'LREAL',
-  TIME = 'TIME',
-  STRING = 'STRING',
-  WSTRING = 'WSTRING',
-}
+/** Elementary IEC 61131-3 types: a runtime constant whose values are exactly the `IecType` string union declared in `@plc-st/plugin-api`, so values built by plugins and by core are interchangeable. */
+export const IecType = {
+  BOOL: 'BOOL',
+  BYTE: 'BYTE',
+  WORD: 'WORD',
+  DWORD: 'DWORD',
+  LWORD: 'LWORD',
+  SINT: 'SINT',
+  USINT: 'USINT',
+  INT: 'INT',
+  UINT: 'UINT',
+  DINT: 'DINT',
+  UDINT: 'UDINT',
+  LINT: 'LINT',
+  ULINT: 'ULINT',
+  REAL: 'REAL',
+  LREAL: 'LREAL',
+  TIME: 'TIME',
+  STRING: 'STRING',
+  WSTRING: 'WSTRING',
+} as const satisfies { [K in IecTypeName]: K }
+
+export type IecType = IecTypeName
 
 /** Bit width + signedness metadata for the integer/bit types. */
 interface IntMeta {
