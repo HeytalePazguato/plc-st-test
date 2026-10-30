@@ -211,6 +211,14 @@ export function callInstance(inst: FbInstance, args: CallArg[], ctx: EvalContext
   return undefined
 }
 
+/** Reinitialise every VAR_TEMP slot of `inst` and of its nested instances to the declared default (the cycle engine calls this at the end of each cycle). */
+export function resetInstanceTemps(inst: FbInstance, ctx: EvalContext): void {
+  const depth = (ctx.depth ?? 0) + 1
+  const inner = instanceContext(inst, ctx, depth)
+  for (const t of inst.temps) t.slot.value = initialValue(t.typeNode, inner, depth, [])
+  for (const child of inst.children) resetInstanceTemps(child, ctx)
+}
+
 // ---------------------------------------------------------------------------
 // Errors, locations, host call context.
 // ---------------------------------------------------------------------------

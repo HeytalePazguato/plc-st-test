@@ -62,7 +62,8 @@ export interface SessionOptions {
   caseSensitive: boolean
 }
 
-export type SessionHook = () => void
+/** Called by the cycle engine with the number of the cycle being run. */
+export type SessionHook = (cycle: number) => void
 
 export class Session {
   readonly limits: Limits
