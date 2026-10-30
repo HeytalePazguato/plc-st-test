@@ -11,3 +11,5 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 
 /** Package version, read from `@plc-st/core`'s own `package.json` (Changesets is the single source of truth). */
 export const VERSION: string = pkg.version
+
+export { parseTimeLiteral } from './interpreter/time.js'

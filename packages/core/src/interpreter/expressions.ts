@@ -18,6 +18,7 @@ import { elementaryType, type IecValue } from './values.js'
 import { IecError, IecRuntimeError } from '../errors.js'
 import { caseKey } from '../case.js'
 import { declaredValue } from '../oop/property.js'
+import { UNIT_NS, scaled, parseDurationBody } from './time.js'
 
 type Scalar = Extract<IecValue, { kind: 'scalar' }>
 type ArrayValue = Extract<IecValue, { kind: 'array' }>
@@ -695,36 +696,11 @@ function literalBody(node: Node): string {
   return node.text.slice(node.text.indexOf('#') + 1)
 }
 
-const UNIT_NS: Record<string, bigint> = {
-  d: 86_400_000_000_000n,
-  h: 3_600_000_000_000n,
-  m: 60_000_000_000n,
-  s: 1_000_000_000n,
-  ms: 1_000_000n,
-  us: 1_000n,
-  ns: 1n,
-}
-
-/** `amount` (digits with an optional `.fraction`) times `unit` nanoseconds, truncated to whole nanoseconds. */
-function scaled(amount: string, unit: bigint): bigint {
-  const [whole, fraction = ''] = amount.split('.')
-  const frac = fraction === '' ? 0n : (BigInt(fraction) * unit) / 10n ** BigInt(fraction.length)
-  return BigInt(whole) * unit + frac
-}
-
 /** `T#`/`TIME#`/`LTIME#` duration, including compound forms like `T#1h2m3s4ms`, in nanoseconds. */
 function parseDuration(node: Node, ctx: EvalContext): bigint {
-  let body = literalBody(node)
-  const negative = body.startsWith('-')
-  if (body.startsWith('-') || body.startsWith('+')) body = body.slice(1)
-  let total = 0n
-  let consumed = 0
-  for (const m of body.matchAll(/(\d+(?:\.\d+)?)(ms|us|ns|d|h|m|s)/gi)) {
-    total += scaled(m[1], UNIT_NS[m[2].toLowerCase()])
-    consumed += m[0].length
-  }
-  if (consumed !== body.length || consumed === 0) throw fail(node, ctx, `invalid time literal ${node.text}`)
-  return negative ? -total : total
+  const total = parseDurationBody(literalBody(node))
+  if (total === undefined) throw fail(node, ctx, `invalid time literal ${node.text}`)
+  return total
 }
 
 /** Milliseconds since the epoch of `yyyy-mm-dd`, validated (no day/month roll-over). */
