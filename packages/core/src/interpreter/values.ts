@@ -6,9 +6,9 @@
 
 import type { Node } from 'web-tree-sitter'
 import type { EnumTypeInfo, IecValue, TypeResolver } from '@plc-st/plugin-api'
-import { IecLimitError } from '../errors.js'
+import { IecLimitError, IecRuntimeError } from '../errors.js'
 import type { Limits } from '../limits.js'
-import { IecType, isBigIntType, froundReal } from './numeric.js'
+import { IecType, isBigIntType, isIntType, froundReal, wrapInt } from './numeric.js'
 
 export type {
   AliasTypeInfo,
@@ -133,7 +133,10 @@ function scalarValue(
       if (type === IecType.LREAL) return Number(initNode.text.replace(/_/g, ''))
       if (type === IecType.STRING || type === IecType.WSTRING) return initNode.text
       if (type === IecType.BOOL) return initNode.text.trim() !== '0'
-      return evalIntLiteral(initNode.text, isBigIntType(type) || type === IecType.TIME)
+      {
+        const n = evalIntLiteral(initNode.text, isBigIntType(type) || type === IecType.TIME)
+        return isIntType(type) ? wrapInt(n, type) : n
+      }
     }
     case 'real_literal': {
       const n = Number(initNode.text.replace(/_/g, ''))
@@ -220,7 +223,7 @@ function buildDefault(
     case 'string_type':
       return stringDefault(typeNode, initNode, meter)
     case 'array_type':
-      return arrayDefault(typeNode, resolver, meter)
+      return arrayDefault(typeNode, initNode, resolver, meter)
     case 'enumerated_type_inline':
       chargeAllocation(meter, 1)
       return inlineEnumDefault(typeNode, '')
@@ -271,7 +274,41 @@ function elemTypeOf(node: Node): IecType | string {
   return node.text
 }
 
-function arrayDefault(typeNode: Node, resolver: TypeResolver, meter?: AllocationMeter): IecValue {
+/**
+ * The element initializer nodes of an array initializer, with `N(v1, v2)` repetitions expanded. The base grammar emits an array initializer as a run of sibling `initial_value`/`default` children starting with a `[` token (the bracket is hidden inside `_array_initializer`), so `initNode` is that `[` and the elements are the named siblings up to the closing `]`. Returns `undefined` when `initNode` is not an array initializer. The expanded length is computed before any node list is materialised so a huge repetition count cannot exhaust memory.
+ */
+function arrayInitElements(initNode: Node | undefined, name: string, capacity: number): Node[] | undefined {
+  if (initNode === undefined || initNode.type !== '[') return undefined
+  const groups: { nodes: Node[]; count: number }[] = []
+  let length = 0
+  for (let n = initNode.nextSibling; n !== null && n.type !== ']'; n = n.nextSibling) {
+    if (!n.isNamed) continue
+    let group: { nodes: Node[]; count: number }
+    if (n.type === 'array_repetition') {
+      const countNode = n.childForFieldName('count')
+      const count = countNode === null ? 1 : Number(evalIntLiteral(countNode.text, false))
+      if (!Number.isInteger(count) || count < 0) throw new IecRuntimeError(`invalid repetition count '${countNode?.text ?? ''}' in initializer of ${name}`)
+      group = { nodes: n.namedChildren.filter((c) => countNode === null || c.id !== countNode.id), count }
+    } else {
+      group = { nodes: [n], count: 1 }
+    }
+    length += group.nodes.length * group.count
+    if (length > capacity) throw new IecRuntimeError(`too many initializer elements for ${name}: array holds ${String(capacity)} but at least ${String(length)} were given`)
+    groups.push(group)
+  }
+  const out: Node[] = []
+  for (const g of groups) for (let i = 0; i < g.count; i++) out.push(...g.nodes)
+  return out
+}
+
+/** The declared name of the variable/field/type that owns `typeNode`, for error messages. */
+function ownerName(typeNode: Node): string {
+  const parent = typeNode.parent
+  const nameNode = parent?.childForFieldName('names') ?? parent?.childForFieldName('name')
+  return nameNode?.text ?? typeNode.text
+}
+
+function arrayDefault(typeNode: Node, initNode: Node | undefined, resolver: TypeResolver, meter?: AllocationMeter): IecValue {
   const ranges = typeNode.childrenForFieldName('range')
   const dims: [number, number][] = []
   let total = 1
@@ -286,21 +323,36 @@ function arrayDefault(typeNode: Node, resolver: TypeResolver, meter?: Allocation
   const elemNode = typeNode.childForFieldName('element_type')
   const elemType = elemNode ? elemTypeOf(elemNode) : IecType.INT
   const data: IecValue[] = []
+  // Validated against the element count before anything is allocated; initializers are laid out row-major, matching `data`.
+  const inits = arrayInitElements(initNode, ownerName(typeNode), total) ?? []
   if (total === 0) return { kind: 'array', elemType, dims, data }
-  const build = (): IecValue => (elemNode ? buildDefault(elemNode, undefined, resolver) : { kind: 'scalar', type: IecType.INT, value: 0 })
+  const build = (i: number): IecValue => (elemNode ? buildDefault(elemNode, inits[i], resolver) : { kind: 'scalar', type: IecType.INT, value: 0 })
   if (meter === undefined) {
-    for (let i = 0; i < total; i++) data.push(build())
+    for (let i = 0; i < total; i++) data.push(build(i))
     return { kind: 'array', elemType, dims, data }
   }
   // Build one element first (it charges its own slots), then check the remaining elements against the limit BEFORE building them, so a huge array is rejected without being allocated. The rest are built unmetered because their slots are charged here in bulk.
   const before = meter.allocation
-  data.push(elemNode ? buildDefault(elemNode, undefined, resolver, meter) : build())
+  data.push(elemNode ? buildDefault(elemNode, inits[0], resolver, meter) : build(0))
   const perElement = Math.max(1, meter.allocation - before)
   const rest = (total - 1) * perElement
   if (meter.allocation + rest > meter.limits.maxAllocatedElements) throw limitExceeded(meter, total * perElement)
   meter.allocation += rest
-  for (let i = 1; i < total; i++) data.push(build())
+  for (let i = 1; i < total; i++) data.push(build(i))
   return { kind: 'array', elemType, dims, data }
+}
+
+/** Field name -> value node of a `structure_initializer` (`(a := 1, b := 2)`); empty when `initNode` is not one. */
+function structInitFields(initNode: Node | undefined): Map<string, Node> {
+  const out = new Map<string, Node>()
+  if (initNode === undefined || initNode.type !== 'structure_initializer') return out
+  for (const f of initNode.namedChildren) {
+    if (f.type !== 'structure_initializer_field') continue
+    const name = f.childForFieldName('name')
+    const value = f.childForFieldName('value')
+    if (name !== null && value !== null) out.set(name.text.toUpperCase(), value)
+  }
+  return out
 }
 
 function inlineEnumDefault(typeNode: Node, typeName: string): IecValue {
@@ -355,12 +407,13 @@ function namedDefault(
   if (resolved.kind === 'struct') {
     chargeAllocation(meter, 1)
     const fields = new Map<string, IecValue>()
+    const overrides = structInitFields(initNode)
     for (const f of resolved.fields) {
       fields.set(
         f.name,
         buildDefault(
           f.typeNode,
-          f.initNode ?? findInitializer(f.typeNode),
+          overrides.get(f.name.toUpperCase()) ?? f.initNode ?? findInitializer(f.typeNode),
           resolver,
           meter,
         ),

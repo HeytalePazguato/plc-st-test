@@ -47,6 +47,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pin `tree-sitter-iec61131-3-st` to 0.1.2, whose external scanner reserves the `END_*` terminators; a forgotten `END_IF` now yields a precise `MISSING "END_IF"` node instead of collapsing the whole POU into a single error.
 - Branch flow diagram now shows two paths to `main`: `release/*` for planned releases and `hotfix/*` for emergency patches. PRs to `main` must originate from one of these two — never from `develop` directly, because the `delete_branch_on_merge` setting would wipe `develop` on the remote on every release.
 
+### Fixed
+
+- `defaultValue` in `@plc-st/core` now honours declared array initializers instead of always yielding zeros: `ARRAY[1..3] OF INT := [1, 2, 3]`, the repetition form `[2(5), 3]` (= 5, 5, 3), partial initializers (remaining elements keep the element default), multi-dimensional arrays (row-major), and structure initializers `(x := 4)` for struct variables; each element goes through its type's wrap / fround / STRING truncation (integer literals now wrap into the declared width, e.g. `SINT := 200` is -56), too many elements throw an `IecRuntimeError` naming the variable, and the expanded length is checked before anything is allocated so the task 3.8 allocation accounting still applies.
+
 ### Why
 
 Discovered while shipping the first 0.0.1 of a project that used this blueprint: when CI/release-workflow fixes were PR'd from `develop` directly to `main`, the auto-delete-on-merge setting deleted `develop` on the remote each time. The fix is procedural — always route through `release/*` or `hotfix/*` — so the blueprint now codifies that.
