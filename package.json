@@ -17,9 +17,13 @@
     "build": "tsc -b",
     "test": "vitest run",
     "lint": "eslint .",
-    "clean": "tsc -b --clean"
+    "clean": "tsc -b --clean",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@eslint/js": "^10.0.1",
     "@types/node": "~24",
     "eslint": "^10.13.0",
