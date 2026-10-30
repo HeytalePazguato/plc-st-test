@@ -69,6 +69,8 @@ export interface Action {
   bodyNodes: Node[]
   /** Id of the source unit the action came from. */
   unitId: string
+  /** Whether that unit is a test unit. */
+  isTest: boolean
 }
 
 /** Kind of program organization unit. */
@@ -455,7 +457,7 @@ function attachAction(unit: SourceUnit, text: string, language: Language, table:
   if (first !== undefined) {
     table.registerTree(first.tree, { unitId: unit.id, map: unit.map, lineOffset: STATEMENT_FRAGMENT_LINE_OFFSET })
   }
-  table.addAction(owner, { name: unit.name ?? '<anonymous>', bodyNodes, unitId: unit.id }, unitStart)
+  table.addAction(owner, { name: unit.name ?? '<anonymous>', bodyNodes, unitId: unit.id, isTest: unit.isTest }, unitStart)
 }
 
 /** Collect declarations from every unit, then resolve FB-typed variables across all of them. */

@@ -40,6 +40,7 @@ pnpm-debug.log*
 
 # Test/coverage output
 coverage/
+!packages/core/src/coverage/
 packages/**/dist/
 *.tsbuildinfo
 

@@ -11,6 +11,7 @@ import { IecType } from '../src/interpreter/numeric.js'
 import { execBody, execStatement } from '../src/interpreter/statements.js'
 import type { CallPou, ControlSignal, EvalContext } from '../src/interpreter/context.js'
 import { Session, type CoverageSink } from '../src/session.js'
+import { instrument } from '../src/coverage/instrument.js'
 import { DEFAULT_LIMITS, type Limits } from '../src/limits.js'
 import { IecRuntimeError } from '../src/errors.js'
 
@@ -359,7 +360,11 @@ describe('statements', () => {
       const sink: CoverageSink = { hit: (id) => hits.push(id), snapshot: () => new Map() }
       p.ctx.session.coverage = sink
       execBody(p.body, p.ctx)
-      expect(hits).toEqual([`${FILE}:${String(p.lineOf(0))}:else`, `${FILE}:${String(p.lineOf(1))}:case`, `${FILE}:${String(p.lineOf(2))}:for-body`, `${FILE}:${String(p.lineOf(2))}:for-body`])
+      // A sink without a branch map has no ids to report.
+      expect(hits).toEqual([])
+      p.ctx.session.branches = instrument(p.ctx.symbols)
+      execBody(p.body, p.ctx)
+      expect(hits).toEqual([`Main:${FILE}:${String(p.lineOf(0))}:else:0`, `Main:${FILE}:${String(p.lineOf(1))}:case:1`, `Main:${FILE}:${String(p.lineOf(2))}:for-entered:0`])
     })
   })
 

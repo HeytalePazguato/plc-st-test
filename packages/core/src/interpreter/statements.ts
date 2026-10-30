@@ -7,15 +7,16 @@
  *
  * FOR evaluates start, end and step once, rejects a zero step, skips the body when the bounds and the step's sign disagree, re-reads the control variable each iteration (so the guard sees the stored, wrapped value) and leaves it at the first value past the end after a normal termination. Every loop execution is capped at `limits.maxLoopIterations`; exceeding it raises an `IecRuntimeError` naming the loop's original file and line.
  *
- * Coverage: when the session has a `CoverageSink`, each taken branch reports `<file>:<line>:<kind>` (a placeholder id scheme; task 5.5 formalises ids). Without a sink no location work is done.
+ * Coverage: when the session has a `CoverageSink`, each taken branch reports the id `coverage/instrument.ts` gave it; code that is not instrumented (test POUs) reports nothing. Without a sink no lookup is done.
  */
 
 import type { Node } from 'web-tree-sitter'
 import type { Slot } from '@plc-st/plugin-api'
 import { NORMAL, type ControlSignal, type EvalContext } from './context.js'
-import { evalCall, evalExpression, evalLValue, fail, where } from './expressions.js'
+import { evalCall, evalExpression, evalLValue, fail } from './expressions.js'
 import { IecType, froundReal, isBigIntType, isIntType, wrapInt } from './numeric.js'
 import { cloneValue, type IecValue } from './values.js'
+import type { BranchKind } from '../coverage/instrument.js'
 import { IecRuntimeError } from '../errors.js'
 import { bindInterface, isInterfaceValue } from '../oop/interface.js'
 import { declaredValue } from '../oop/property.js'
@@ -116,10 +117,10 @@ function isSignal(v: unknown): v is ControlSignal {
 }
 
 /** Report a taken branch to the coverage sink, if there is one. */
-function hit(node: Node, kind: string, ctx: EvalContext): void {
-  const sink = ctx.session.coverage
-  if (sink === undefined) return
-  sink.hit(`${where(node, ctx)}:${kind}`)
+function hit(node: Node, kind: BranchKind, ctx: EvalContext): void {
+  if (ctx.session.coverage === undefined) return
+  const id = ctx.session.branches?.idOf(node, kind)
+  if (id !== undefined) ctx.session.coverage.hit(id)
 }
 
 function condition(node: Node, ctx: EvalContext): boolean {
@@ -234,7 +235,7 @@ function roundHalfEven(n: number): number {
 
 function execIf(node: Node, ctx: EvalContext): ControlSignal {
   if (condition(field(node, 'condition'), ctx)) {
-    hit(node, 'then', ctx)
+    hit(node, 'if', ctx)
     return execBody(statements(node, 'consequence'), ctx)
   }
   for (const clause of clauses(node, 'elsif_clause')) {
@@ -245,7 +246,7 @@ function execIf(node: Node, ctx: EvalContext): ControlSignal {
   }
   const otherwise = clauses(node, 'else_clause')[0] as Node | undefined
   if (otherwise === undefined) {
-    hit(node, 'if-none', ctx)
+    hit(node, 'implicit-else', ctx)
     return NORMAL
   }
   hit(otherwise, 'else', ctx)
@@ -291,7 +292,7 @@ function execCase(node: Node, ctx: EvalContext): ControlSignal {
   }
   const otherwise = clauses(node, 'else_clause')[0] as Node | undefined
   if (otherwise === undefined) {
-    hit(node, 'case-none', ctx)
+    hit(node, 'case-implicit-else', ctx)
     return NORMAL
   }
   hit(otherwise, 'case-else', ctx)
@@ -346,15 +347,18 @@ function execFor(node: Node, ctx: EvalContext): ControlSignal {
   const body = statements(node, 'body')
   const guard = iterationGuard(node, ctx)
   const current = (): bigint => integerOf(control.value, controlNode, ctx, 'control variable')
+  let entered = false
   for (;;) {
     const i = current()
     if (step > 0n ? i > end : i < end) break
     guard()
-    hit(node, 'for-body', ctx)
+    if (!entered) hit(node, 'for-entered', ctx)
+    entered = true
     const { stop, signal } = iterate(body, ctx)
     if (stop) return signal
     control.value = { kind: 'scalar', type: controlType, value: wrapTo(current() + step, controlType) }
   }
+  if (!entered) hit(node, 'for-skipped', ctx)
   return NORMAL
 }
 
@@ -362,12 +366,15 @@ function execWhile(node: Node, ctx: EvalContext): ControlSignal {
   const cond = field(node, 'condition')
   const body = statements(node, 'body')
   const guard = iterationGuard(node, ctx)
+  let entered = false
   while (condition(cond, ctx)) {
     guard()
-    hit(node, 'while-body', ctx)
+    if (!entered) hit(node, 'while-entered', ctx)
+    entered = true
     const { stop, signal } = iterate(body, ctx)
     if (stop) return signal
   }
+  if (!entered) hit(node, 'while-skipped', ctx)
   return NORMAL
 }
 
@@ -375,9 +382,9 @@ function execRepeat(node: Node, ctx: EvalContext): ControlSignal {
   const cond = field(node, 'condition')
   const body = statements(node, 'body')
   const guard = iterationGuard(node, ctx)
+  hit(node, 'repeat-entered', ctx)
   do {
     guard()
-    hit(node, 'repeat-body', ctx)
     const { stop, signal } = iterate(body, ctx)
     if (stop) return signal
   } while (!condition(cond, ctx))

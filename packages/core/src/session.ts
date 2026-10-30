@@ -6,13 +6,14 @@
 import type { FbStubDef, HostFnDef, IecValue, NodeHandler } from '@plc-st/plugin-api'
 import type { OriginalLocation, ProjectWarning } from '@plc-st/project-model'
 import { caseKey } from './case.js'
+import type { BranchMap } from './coverage/instrument.js'
 import { IecLimitError } from './errors.js'
 import type { EvalContext } from './interpreter/context.js'
 import type { CycleEngine } from './interpreter/cycle.js'
 import type { FbInstance } from './interpreter/pou.js'
 import { DEFAULT_LIMITS, type Limits } from './limits.js'
 
-/** Receives a hit for each covered statement/branch id. */
+/** Receives a hit for each taken branch id; ids come from the session's `branches`. */
 export interface CoverageSink {
   hit(id: string): void
   snapshot(): Map<string, number>
@@ -107,6 +108,8 @@ export class Session {
   readonly preCycle: SessionHook[] = []
   readonly postCycle: SessionHook[] = []
   coverage?: CoverageSink
+  /** The ids `coverage` receives; both are set together, by `defaultSessionFactory` when coverage is enabled. */
+  branches?: BranchMap
   /** The currently running test's engine, suite and context; undefined outside a test. */
   runtime?: TestRuntime
   readonly mocks: MockStore

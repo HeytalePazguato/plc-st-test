@@ -5,6 +5,7 @@
 import type { DialectHooks, SuiteDescriptor, SuiteResultV1, TestDescriptor, TestResultV1 } from '@plc-st/plugin-api'
 import type { OriginalLocation } from '@plc-st/project-model'
 import { registerAssertions } from '../assertions.js'
+import type { CoverageRun } from '../coverage/instrument.js'
 import { AssertionFailure, IecError, IecLimitError, IecTimeoutError } from '../errors.js'
 import { SimClock } from '../interpreter/clock.js'
 import { CycleEngine } from '../interpreter/cycle.js'
@@ -30,9 +31,11 @@ export interface RunEnv {
 export interface DefaultSessionOptions {
   table: SymbolTable
   limits?: Limits
+  /** From `startCoverage`; undefined leaves coverage off. */
+  coverage?: CoverageRun
 }
 
-/** A session factory registering the assertions (enum names resolved through the table), the IEC standard library, RUN_CYCLES / RUN_UNTIL, MOCK / MOCK_RETURNS and the EXPECT_* call expectations. */
+/** A session factory registering the assertions (enum names resolved through the table), the IEC standard library, RUN_CYCLES / RUN_UNTIL, MOCK / MOCK_RETURNS and the EXPECT_* call expectations, and attaching the run's coverage to every session when there is one. */
 export function defaultSessionFactory(opts: DefaultSessionOptions): () => Session {
   return () => {
     const session = new Session({ caseSensitive: opts.table.isCaseSensitive, limits: opts.limits })
@@ -42,6 +45,10 @@ export function defaultSessionFactory(opts: DefaultSessionOptions): () => Sessio
     registerMock(session)
     registerMockReturns(session)
     registerMockExpectations(session)
+    if (opts.coverage !== undefined) {
+      session.coverage = opts.coverage.sink
+      session.branches = opts.coverage.branches
+    }
     return session
   }
 }
@@ -130,7 +137,7 @@ export interface SuiteRun {
   sessions: Session[]
 }
 
-/** Runs every test of `desc` in isolation and also returns the per-test sessions (for their warnings and, later, coverage). */
+/** Runs every test of `desc` in isolation and also returns the per-test sessions (for their warnings). */
 export function runSuiteDetailed(desc: SuiteDescriptor, env: RunEnv): SuiteRun {
   const started = performance.now()
   const runs = desc.tests.map((t) => runTest(desc, t, env))
