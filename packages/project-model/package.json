@@ -26,5 +26,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "sax": "^1.6.1"
+  },
+  "devDependencies": {
+    "@types/sax": "^1.2.7"
   }
 }
