@@ -4,10 +4,15 @@
  * `buildSymbolTable` collects POUs (functions, function blocks, programs, interfaces), their VAR blocks and methods, and TYPE declarations (enums, structs, aliases) across every parsed file, then resolves named references (including FB-typed instances and enum members) across file boundaries.
  *
  * The table implements `TypeResolver` from the value model so the interpreter can build default values for user-defined types without a circular import.
+ *
+ * `buildSymbolTableFromProject` builds the same table from a `Project`: every unit is parsed separately, ACTION units are attached to their owning POU, and each tree is remembered together with its unit's `SourceMap` so `locate(node)` and every diagnostic report positions in the original vendor files.
  */
 
-import type { Node } from 'web-tree-sitter'
-import type { ParsedFile, Diagnostic } from '../parser/parse.js'
+import type { Language, Node, Tree } from 'web-tree-sitter'
+import { SourceMap, type OriginalLocation, type Project, type SourceUnit } from '@plc-st/project-model'
+import { parseSource, type ParsedFile } from '../parser/parse.js'
+import { parseStatementFragment, wrapStatementFragment, STATEMENT_FRAGMENT_LINE_OFFSET } from '../parser/fragment.js'
+import { IecError } from '../errors.js'
 import type {
   TypeResolver,
   ResolvedType,
@@ -44,6 +49,15 @@ export interface Method {
   returnTypeNode?: Node
 }
 
+/** An ACTION attached to a POU (from a project unit with role 'action'). */
+export interface Action {
+  name: string
+  /** The action's body statements, in order. */
+  bodyNodes: Node[]
+  /** Id of the source unit the action came from. */
+  unitId: string
+}
+
 /** Kind of program organization unit. */
 export type PouKind = 'function' | 'functionBlock' | 'program' | 'interface'
 
@@ -57,12 +71,38 @@ export interface Pou {
   implementsNames: string[]
   /** The declaration node; body statements are accessible via its `body` field. */
   bodyNode?: Node
-  /** Path of the file this POU was declared in. */
+  /** Path of the (original) file this POU was declared in. */
   file: string
+  /** Id of the source unit this POU was declared in (the file path for `buildSymbolTable`). */
+  unitId: string
+  /** Whether the POU was declared in a test unit. */
+  isTest: boolean
+  /** Actions owned by this POU. */
+  actions: Action[]
 }
 
 export interface BuildOptions {
   caseSensitive?: boolean
+}
+
+export interface ProjectBuildOptions {
+  caseSensitive: boolean
+  /** Text transform applied to every unit before parsing (e.g. conditional compilation); must keep the line count so source maps stay valid. */
+  preprocess?: (text: string) => string
+}
+
+/** A diagnostic located in an original source file. */
+export interface SymbolDiagnostic {
+  location: OriginalLocation
+  message: string
+}
+
+/** Where a parsed tree came from, so its nodes can be mapped back to original files. */
+interface TreeOrigin {
+  unitId: string
+  map: SourceMap
+  /** Synthetic lines preceding the unit text in the tree (the wrapper of an action fragment). */
+  lineOffset: number
 }
 
 // ---------------------------------------------------------------------------
@@ -124,9 +164,11 @@ function evalInt(node: Node): number {
 // ---------------------------------------------------------------------------
 
 export class SymbolTable implements TypeResolver {
-  readonly diagnostics: Diagnostic[] = []
+  readonly diagnostics: SymbolDiagnostic[] = []
 
   private readonly caseSensitive: boolean
+  // Keyed by Tree: web-tree-sitter creates a fresh Node wrapper per access, but every node keeps a reference to its (stable) Tree.
+  private readonly origins = new Map<Tree, TreeOrigin>()
   private readonly pous = new Map<string, Pou>()
   private readonly enums = new Map<string, EnumTypeInfo>()
   private readonly structs = new Map<string, StructTypeInfo>()
@@ -173,22 +215,47 @@ export class SymbolTable implements TypeResolver {
     return [...this.pous.values()]
   }
 
+  /** Original-file location of `node`'s start, via the source map of the unit it was parsed from. Throws for nodes from trees this table did not build. */
+  locate(node: Node): OriginalLocation {
+    const origin = this.origins.get(node.tree)
+    if (origin === undefined) {
+      throw new IecError(`cannot locate node '${node.type}': it does not belong to this symbol table`)
+    }
+    return origin.map.map(node.startPosition.row + 1 - origin.lineOffset, node.startPosition.column + 1)
+  }
+
   // --- Build (internal) ---------------------------------------------------
+
+  /** @internal Remember which unit (and map) `tree` was parsed from. */
+  registerTree(tree: Tree, origin: TreeOrigin): void {
+    this.origins.set(tree, origin)
+  }
+
+  /** @internal */
+  addDiagnostic(location: OriginalLocation, message: string): void {
+    this.diagnostics.push({ location, message })
+  }
 
   /** @internal Register a POU, reporting a diagnostic on duplicate keys. */
   addPou(pou: Pou): void {
     const k = this.key(pou.name)
     const existing = this.pous.get(k)
     if (existing !== undefined) {
-      this.diagnostics.push({
-        file: pou.file,
-        line: 1,
-        col: 1,
-        message: `Duplicate POU '${pou.name}' (already declared in ${existing.file})`,
-      })
+      const location = pou.bodyNode !== undefined ? this.locate(pou.bodyNode) : { file: pou.file, line: 1, col: 1 }
+      this.addDiagnostic(location, `Duplicate POU '${pou.name}' (already declared in ${existing.file})`)
       return
     }
     this.pous.set(k, pou)
+  }
+
+  /** @internal Attach an action to `pou`, reporting a diagnostic on a duplicate action name. */
+  addAction(pou: Pou, action: Action, location: OriginalLocation): void {
+    const k = this.key(action.name)
+    if (pou.actions.some((a) => this.key(a.name) === k)) {
+      this.addDiagnostic(location, `Duplicate action '${action.name}' on POU '${pou.name}'`)
+      return
+    }
+    pou.actions.push(action)
   }
 
   /** @internal */
@@ -217,16 +284,113 @@ export class SymbolTable implements TypeResolver {
 // Collection.
 // ---------------------------------------------------------------------------
 
-/** Build a cross-file symbol table from already-parsed files. */
+/** A parsed declaration unit (POUs / TYPEs / globals) awaiting collection. */
+interface DeclarationUnit {
+  root: Node
+  unitId: string
+  isTest: boolean
+}
+
+function lineCount(text: string): number {
+  let n = 1
+  for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) n++
+  return n
+}
+
+/** Build a cross-file symbol table from already-parsed files; each file is treated as an identity-mapped, non-test unit whose id is its path. */
 export function buildSymbolTable(
   files: ParsedFile[],
   opts?: BuildOptions,
 ): SymbolTable {
   const table = new SymbolTable(opts)
+  const units: DeclarationUnit[] = []
+  for (const file of files) {
+    const map = SourceMap.identity(file.filePath, lineCount(file.source))
+    table.registerTree(file.tree, { unitId: file.filePath, map, lineOffset: 0 })
+    for (const d of file.diagnostics) table.addDiagnostic(map.map(d.line, d.col), d.message)
+    units.push({ root: file.tree.rootNode, unitId: file.filePath, isTest: false })
+  }
+  collectUnits(units, table)
+  return table
+}
+
+/** Build a symbol table from every unit of `project`, attaching ACTION units to their owning POUs; all locations are mapped back through each unit's `SourceMap`. */
+export function buildSymbolTableFromProject(
+  project: Project,
+  language: Language,
+  opts: ProjectBuildOptions,
+): SymbolTable {
+  const table = new SymbolTable({ caseSensitive: opts.caseSensitive })
+  const units: DeclarationUnit[] = []
+  const actions: { unit: SourceUnit; text: string }[] = []
+
+  for (const unit of project.units) {
+    const text = preprocessUnit(unit, opts.preprocess)
+    if (unit.role === 'action') {
+      // Attached after every POU is collected, so an owner declared in a later unit is still found.
+      actions.push({ unit, text })
+      continue
+    }
+    const parsed = parseSource(language, text, unit.id)
+    table.registerTree(parsed.tree, { unitId: unit.id, map: unit.map, lineOffset: 0 })
+    for (const d of parsed.diagnostics) table.addDiagnostic(unit.map.map(d.line, d.col), d.message)
+    units.push({ root: parsed.tree.rootNode, unitId: unit.id, isTest: unit.isTest })
+  }
+
+  collectUnits(units, table)
+  for (const { unit, text } of actions) attachAction(unit, text, language, table)
+  return table
+}
+
+function preprocessUnit(unit: SourceUnit, preprocess: ((text: string) => string) | undefined): string {
+  if (preprocess === undefined) return unit.text
+  const out = preprocess(unit.text)
+  const before = lineCount(unit.text)
+  const after = lineCount(out)
+  if (after !== before) {
+    throw new IecError(`preprocess changed line count of unit '${unit.id}' (${String(before)} -> ${String(after)})`)
+  }
+  return out
+}
+
+function attachAction(unit: SourceUnit, text: string, language: Language, table: SymbolTable): void {
+  const unitStart = unit.map.map(1, 1)
+  const ownerName = unit.owner ?? ''
+  const owner = table.getPou(ownerName)
+  if (owner === undefined) {
+    table.addDiagnostic(unitStart, `action owner '${ownerName}' not found`)
+    return
+  }
+
+  let bodyNodes: Node[]
+  try {
+    bodyNodes = parseStatementFragment(language, text)
+  } catch (err) {
+    if (!(err instanceof IecError)) throw err
+    // Re-parse the identical wrapped source to report every syntax error at its mapped position (the thrown error only carries the first one, as text).
+    const wrapped = parseSource(language, wrapStatementFragment(text), unit.id)
+    const lastLine = lineCount(text)
+    for (const d of wrapped.diagnostics) {
+      const line = Math.min(Math.max(d.line - STATEMENT_FRAGMENT_LINE_OFFSET, 1), lastLine)
+      table.addDiagnostic(unit.map.map(line, d.col), d.message)
+    }
+    if (wrapped.diagnostics.length === 0) table.addDiagnostic(unitStart, err.message)
+    return
+  }
+
+  const first = bodyNodes[0]
+  if (first !== undefined) {
+    table.registerTree(first.tree, { unitId: unit.id, map: unit.map, lineOffset: STATEMENT_FRAGMENT_LINE_OFFSET })
+  }
+  table.addAction(owner, { name: unit.name ?? '<anonymous>', bodyNodes, unitId: unit.id }, unitStart)
+}
+
+/** Collect declarations from every unit, then resolve FB-typed variables across all of them. */
+function collectUnits(units: DeclarationUnit[], table: SymbolTable): void {
   const instanceVars: VarEntry[] = []
 
-  for (const file of files) {
-    collectDeclarations(file.tree.rootNode, file.filePath, table, instanceVars)
+  for (const unit of units) {
+    collectDeclarations(unit.root, unit, table, instanceVars)
   }
 
   // Second pass: an FB-typed local is one whose named type is a known FB.
@@ -236,20 +400,18 @@ export function buildSymbolTable(
       v.instanceOf = typeName
     }
   }
-
-  return table
 }
 
 /** Recurse into namespaces; collect POUs and TYPE declarations elsewhere. */
 function collectDeclarations(
   node: Node,
-  file: string,
+  unit: DeclarationUnit,
   table: SymbolTable,
   instanceVars: VarEntry[],
 ): void {
   for (const child of node.namedChildren) {
     if (child.type === 'namespace_declaration') {
-      collectDeclarations(child, file, table, instanceVars)
+      collectDeclarations(child, unit, table, instanceVars)
       continue
     }
     if (child.type === 'type_declaration') {
@@ -258,7 +420,7 @@ function collectDeclarations(
     }
     const kind = pouKind(child.type)
     if (kind !== undefined) {
-      table.addPou(collectPou(child, kind, file, instanceVars))
+      table.addPou(collectPou(child, kind, unit, table, instanceVars))
     }
   }
 }
@@ -266,7 +428,8 @@ function collectDeclarations(
 function collectPou(
   node: Node,
   kind: PouKind,
-  file: string,
+  unit: DeclarationUnit,
+  table: SymbolTable,
   instanceVars: VarEntry[],
 ): Pou {
   const nameNode = node.childForFieldName('name')
@@ -291,7 +454,10 @@ function collectPou(
     extendsName,
     implementsNames,
     bodyNode: node,
-    file,
+    file: table.locate(node).file,
+    unitId: unit.unitId,
+    isTest: unit.isTest,
+    actions: [],
   }
 }
 

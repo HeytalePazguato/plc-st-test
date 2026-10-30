@@ -6,6 +6,14 @@ const EXPR_SUFFIX = ');\nEND_FUNCTION'
 const STMT_PREFIX = 'PROGRAM __frag\n'
 const STMT_SUFFIX = '\nEND_PROGRAM'
 
+/** Number of synthetic lines `parseStatementFragment` places before the fragment; subtract it from a returned node's row to get the fragment-relative row (the wrapper adds no column offset). */
+export const STATEMENT_FRAGMENT_LINE_OFFSET = STMT_PREFIX.split('\n').length - 1
+
+/** The exact source `parseStatementFragment` parses for `stmts`, for callers that need the wrapper's diagnostics instead of a thrown error. */
+export function wrapStatementFragment(stmts: string): string {
+  return STMT_PREFIX + stmts + STMT_SUFFIX
+}
+
 /** First ERROR / MISSING node in the subtree, in document order. */
 function findProblem(node: Node): Node | undefined {
   if (node.isMissing || node.isError || node.type === 'ERROR') return node
