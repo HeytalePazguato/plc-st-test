@@ -6,7 +6,7 @@ const ban = (group, message) => ({ group, message })
 
 // Dependency-boundary rules (see CONTRIBUTING.md). test/architecture.test.ts enforces the same rules on package.json files and source imports.
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'docs/', '**/dist/'] },
+  { ignores: ['dist/', 'node_modules/', 'docs/', '**/dist/', '_site/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

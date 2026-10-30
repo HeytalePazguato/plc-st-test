@@ -42,3 +42,6 @@ pnpm-debug.log*
 coverage/
 packages/**/dist/
 *.tsbuildinfo
+
+# MkDocs build output
+_site/
