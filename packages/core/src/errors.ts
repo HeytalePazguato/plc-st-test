@@ -5,6 +5,8 @@
  * import from.
  */
 
+import type { OriginalLocation } from '@plc-st/project-model'
+
 /** Base class for all errors raised by this package. */
 export class IecError extends Error {
   constructor(message?: string) {
@@ -34,5 +36,20 @@ export class IecTimeoutError extends IecError {
   constructor(message?: string) {
     super(message)
     this.name = 'IecTimeoutError'
+  }
+}
+
+/** Raised by an `ASSERT_*` host function; `expected` and `actual` are display strings (see `formatValue`) and `location` is the original file position of the assertion call. */
+export class AssertionFailure extends IecError {
+  readonly expected: string
+  readonly actual: string
+  readonly location: OriginalLocation
+
+  constructor(message: string, expected: string, actual: string, location: OriginalLocation) {
+    super(message)
+    this.name = 'AssertionFailure'
+    this.expected = expected
+    this.actual = actual
+    this.location = location
   }
 }
