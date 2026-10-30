@@ -2,12 +2,13 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
-  initParser,
+  loadGrammar,
+  baseGrammarPath,
   parseSource,
   walk,
   type Diagnostic,
 } from '../src/parser/parse.js'
-import type { Node } from 'web-tree-sitter'
+import type { Language, Node } from 'web-tree-sitter'
 
 function fixture(name: string): string {
   const url = new URL(`./fixtures/${name}`, import.meta.url)
@@ -17,16 +18,16 @@ function fixture(name: string): string {
 const VALID_INLINE =
   'FUNCTION_BLOCK FB_A VAR x : INT; END_VAR x := 1; END_FUNCTION_BLOCK'
 
+let lang: Language
+
 describe('parser', () => {
   beforeAll(async () => {
-    await initParser()
+    lang = await loadGrammar(baseGrammarPath())
   })
 
-  it('initParser is idempotent and parseSource works afterwards', async () => {
-    // Calling init again must resolve and must NOT re-initialise (the impl caches a single promise). We can only observe that subsequent awaits resolve and that parsing still works.
-    await initParser()
-    await initParser()
-    const parsed = parseSource(VALID_INLINE, 'inline.st')
+  it('loadGrammar caches the Language per path and parseSource works', async () => {
+    expect(await loadGrammar(baseGrammarPath())).toBe(lang)
+    const parsed = parseSource(lang, VALID_INLINE, 'inline.st')
     expect(parsed.filePath).toBe('inline.st')
     expect(parsed.tree).toBeDefined()
     expect(parsed.diagnostics).toEqual([])
@@ -34,7 +35,7 @@ describe('parser', () => {
 
   it('parses a valid FB fixture with zero diagnostics', () => {
     const src = fixture('valid_fb.st')
-    const parsed = parseSource(src, 'valid_fb.st')
+    const parsed = parseSource(lang, src, 'valid_fb.st')
     expect(parsed.diagnostics).toEqual([])
     expect(parsed.source).toBe(src)
     expect(parsed.filePath).toBe('valid_fb.st')
@@ -42,7 +43,7 @@ describe('parser', () => {
 
   it('reports a localized MISSING END_IF for an unterminated IF', () => {
     const src = fixture('missing_endif.st')
-    const parsed = parseSource(src, 'missing_endif.st')
+    const parsed = parseSource(lang, src, 'missing_endif.st')
     expect(parsed.diagnostics.length).toBeGreaterThanOrEqual(1)
     // grammar >=0.1.2 reserves the END_* terminators via an external scanner, so a forgotten END_IF no longer collapses the whole FB into a line-1 ERROR. The parser keeps the function_block_declaration + if_statement and emits a precise MISSING "END_IF" node where the terminator was expected (just before END_FUNCTION_BLOCK, end of the last statement: line 6, col 20).
     const missing = parsed.diagnostics.find((d: Diagnostic) =>
@@ -65,7 +66,7 @@ describe('parser', () => {
 
   it('reports a MISSING-node diagnostic with a precise 1-based line/col', () => {
     const src = fixture('missing_semicolon.st')
-    const parsed = parseSource(src, 'missing_semicolon.st')
+    const parsed = parseSource(lang, src, 'missing_semicolon.st')
     expect(parsed.diagnostics.length).toBeGreaterThanOrEqual(1)
     const missing = parsed.diagnostics.find((d: Diagnostic) =>
       d.message.startsWith('Missing'),
@@ -79,7 +80,7 @@ describe('parser', () => {
   })
 
   it('walk visits every named node exactly once', () => {
-    const parsed = parseSource(VALID_INLINE, 'inline.st')
+    const parsed = parseSource(lang, VALID_INLINE, 'inline.st')
     const visited: Node[] = []
     walk(parsed.tree.rootNode, (n) => visited.push(n))
 

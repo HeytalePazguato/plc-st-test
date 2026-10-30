@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { initParser, parseSource, walk } from '../src/parser/parse.js'
+import type { Language } from 'web-tree-sitter'
+import { loadGrammar, baseGrammarPath, parseSource, walk } from '../src/parser/parse.js'
 import type { Node } from 'web-tree-sitter'
 import { IecType } from '../src/interpreter/numeric.js'
 import {
@@ -11,9 +12,11 @@ import {
   type TypeResolver,
 } from '../src/interpreter/values.js'
 
+let lang: Language
+
 /** Find the first node of `type` in a parsed source. */
 function findNode(source: string, type: string): Node {
-  const parsed = parseSource(source, 'inline.st')
+  const parsed = parseSource(lang, source, 'inline.st')
   let found: Node | undefined
   walk(parsed.tree.rootNode, (n) => {
     if (found === undefined && n.type === type) found = n
@@ -36,7 +39,7 @@ const emptyResolver: TypeResolver = { resolveType: () => undefined }
 
 describe('values', () => {
   beforeAll(async () => {
-    await initParser()
+    lang = await loadGrammar(baseGrammarPath())
   })
 
   it('ARRAY[1..3] OF INT default = three INT zeros with dims [[1,3]]', () => {

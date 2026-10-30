@@ -2,21 +2,25 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
-  initParser,
+  loadGrammar,
+  baseGrammarPath,
   parseSource,
   type ParsedFile,
 } from '../src/parser/parse.js'
+import type { Language } from 'web-tree-sitter'
 import { buildSymbolTable } from '../src/symbols/table.js'
+
+let lang: Language
 
 function fixture(name: string): ParsedFile {
   const url = new URL(`./fixtures/${name}`, import.meta.url)
   const src = readFileSync(fileURLToPath(url), 'utf8')
-  return parseSource(src, name)
+  return parseSource(lang, src, name)
 }
 
 describe('symbol table', () => {
   beforeAll(async () => {
-    await initParser()
+    lang = await loadGrammar(baseGrammarPath())
   })
 
   it('resolves enum members and the FB-instance type across files', () => {
@@ -74,7 +78,7 @@ describe('symbol table', () => {
     const src =
       'FUNCTION_BLOCK myVar VAR x : INT; END_VAR END_FUNCTION_BLOCK\n' +
       'FUNCTION_BLOCK MyVar VAR y : INT; END_VAR END_FUNCTION_BLOCK'
-    const file = parseSource(src, 'case.st')
+    const file = parseSource(lang, src, 'case.st')
 
     const sensitive = buildSymbolTable([file], { caseSensitive: true })
     expect(sensitive.diagnostics).toEqual([])
