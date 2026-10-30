@@ -60,7 +60,7 @@ importers:
         specifier: workspace:*
         version: link:../project-model
       commander:
-        specifier: ^15
+        specifier: 15.0.0
         version: 15.0.0
       tinyglobby:
         specifier: ~0.2.17

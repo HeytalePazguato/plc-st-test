@@ -46,3 +46,6 @@ packages/**/dist/
 
 # MkDocs build output
 _site/
+
+# Default plc-st-test report directory
+plc-st-test-results/

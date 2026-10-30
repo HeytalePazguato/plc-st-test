@@ -21,7 +21,7 @@ export interface DiscoveryResult {
 export const DEFAULT_PATTERN = 'TEST_*'
 
 /** Compile a `*` / `?` glob into an anchored regex; case-insensitive unless the table is case-sensitive. */
-function globToRegExp(glob: string, caseSensitive: boolean): RegExp {
+export function globToRegExp(glob: string, caseSensitive: boolean): RegExp {
   const source = [...glob]
     .map((c) => (c === '*' ? '.*' : c === '?' ? '.' : c.replace(/[.+^${}()|[\]\\]/g, '\\$&')))
     .join('')

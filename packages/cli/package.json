@@ -40,7 +40,7 @@
     "@plc-st/ingestor-twincat": "workspace:*",
     "@plc-st/plugin-api": "workspace:*",
     "@plc-st/project-model": "workspace:*",
-    "commander": "^15",
+    "commander": "15.0.0",
     "tinyglobby": "~0.2.17",
     "yaml": "2.9.1",
     "zod": "4.6.7"

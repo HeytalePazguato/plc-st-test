@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { VERSION } from '@plc-st/core'
+import { main } from './program.js'
 
-// The full commander-based CLI (run/discover/--output/--watch) is implemented in a later phase. This placeholder keeps the `bin` entry buildable.
-console.log(`plc-st-test ${VERSION}`)
+// `exitCode` rather than `process.exit`, so piped stdout is flushed first.
+process.exitCode = await main(process.argv.slice(2))

@@ -1,0 +1,11 @@
+FUNCTION_BLOCK FB_Counter
+VAR_INPUT
+  bEnable : BOOL;
+END_VAR
+VAR_OUTPUT
+  nCount : DINT;
+END_VAR
+IF bEnable THEN
+  nCount := nCount + 1;
+END_IF
+END_FUNCTION_BLOCK
