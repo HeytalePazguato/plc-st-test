@@ -122,6 +122,9 @@ importers:
       '@plc-st/project-model':
         specifier: workspace:^
         version: link:../../project-model
+      tinyglobby:
+        specifier: 0.2.17
+        version: 0.2.17
 
   packages/ingestors/twincat:
     dependencies:

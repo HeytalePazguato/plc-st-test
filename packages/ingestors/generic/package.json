@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@plc-st/plugin-api": "workspace:^",
-    "@plc-st/project-model": "workspace:^"
+    "@plc-st/project-model": "workspace:^",
+    "tinyglobby": "0.2.17"
   }
 }
