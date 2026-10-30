@@ -11,6 +11,7 @@ import { IecError } from '../errors.js'
 import { IecType, isBigIntType } from '../interpreter/numeric.js'
 import { elementaryType } from '../interpreter/values.js'
 import type { Session } from '../session.js'
+import { isVendorTestLib, isVendorTestLibName } from '../vendorlib.js'
 import { accessorsOf, type Method, type Pou, type SymbolTable, type UnresolvedType, type VarBlock, type VarEntry } from '../symbols/table.js'
 
 export interface AutoStubOptions {
@@ -18,7 +19,7 @@ export interface AutoStubOptions {
   strict: boolean
   /** The project's referenced libraries, used to name the library an unresolved symbol most likely comes from. */
   libraries?: readonly LibraryRef[]
-  /** Library names the dialect provides itself; a symbol qualified with one of them is never stubbed. */
+  /** Library names the dialect provides itself; a symbol qualified with one of them, or with the vendor `PlcStTest` library, is never stubbed. */
   builtinLibraries?: readonly string[]
 }
 
@@ -128,7 +129,7 @@ function contextType(node: Node, vars: Map<string, VarEntry>, caseSensitive: boo
 /** The library an unresolved symbol most likely belongs to, or undefined when the project does not say. */
 function libraryOf(qualifier: string | undefined, libraries: readonly LibraryRef[]): string | undefined {
   if (qualifier !== undefined) return qualifier
-  const candidates = libraries.filter((l) => l.kind === 'compiled' || l.kind === 'system').map((l) => l.name)
+  const candidates = libraries.filter((l) => (l.kind === 'compiled' || l.kind === 'system') && !isVendorTestLib(l)).map((l) => l.name)
   if (candidates.length === 0) return undefined
   return candidates.length === 1 ? candidates[0] : `one of ${candidates.join(', ')}`
 }
@@ -144,7 +145,7 @@ function collectFbs(table: SymbolTable, session: Session, opts: AutoStubOptions)
   for (const type of types) {
     const short = lastSegment(type.name)
     const qualifier = type.name.includes('.') ? type.name.slice(0, type.name.lastIndexOf('.')) : undefined
-    if (qualifier !== undefined && builtin.has(caseKey(qualifier, caseSensitive))) continue
+    if (qualifier !== undefined && (builtin.has(caseKey(qualifier, caseSensitive)) || isVendorTestLibName(qualifier))) continue
     if (session.fbStubs.get(short) !== undefined) continue
     const key = caseKey(short, caseSensitive)
     let usage = byName.get(key)

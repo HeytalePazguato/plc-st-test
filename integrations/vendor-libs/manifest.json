@@ -1,0 +1,1213 @@
+{
+  "$comment": "Canonical list of the host functions plc-st-test exposes to Structured Text. The TwinCAT and Automation Studio PlcStTest libraries declare exactly these functions; the core conformance test (packages/core/test/vendorlib.test.ts) keeps this file and the registered host functions in step. IEC standard library functions (CONCAT, SHL, TON, ...) are vendor built-ins and are not listed.",
+  "library": "PlcStTest",
+  "manifestVersion": 1,
+  "functions": [
+    {
+      "name": "ASSERT_TRUE",
+      "description": "Fails the test when the condition is FALSE.",
+      "parameters": [
+        {
+          "name": "condition",
+          "type": "BOOL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_FALSE",
+      "description": "Fails the test when the condition is TRUE.",
+      "parameters": [
+        {
+          "name": "condition",
+          "type": "BOOL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL",
+      "description": "Fails the test when actual and expected differ in type or value.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "ANY",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "ANY",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null,
+      "vendorNotes": {
+        "twincat": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
+        "br": "Automation Studio has no ANY: provide one overload-style function per typed variant (ASSERT_EQUAL_<TYPE>) and use the typed variants in tests."
+      }
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL",
+      "description": "Fails the test when actual and expected are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "ANY",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "ANY",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null,
+      "vendorNotes": {
+        "twincat": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
+        "br": "Automation Studio has no ANY: provide one overload-style function per typed variant (ASSERT_EQUAL_<TYPE>) and use the typed variants in tests."
+      }
+    },
+    {
+      "name": "ASSERT_NEAR",
+      "description": "Fails the test when |actual - expected| exceeds the tolerance.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "ANY_REAL",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "ANY_REAL",
+          "optional": false
+        },
+        {
+          "name": "tolerance",
+          "type": "ANY_REAL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null,
+      "vendorNotes": {
+        "twincat": "Declare the parameters as LREAL; REAL arguments widen implicitly.",
+        "br": "Declare the parameters as LREAL; REAL arguments widen implicitly."
+      }
+    },
+    {
+      "name": "ASSERT_ARRAY_EQUAL",
+      "description": "Fails the test when two arrays differ in bounds or at any element.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "ANY",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "ANY",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null,
+      "vendorNotes": {
+        "twincat": "Declare the parameters as ANY; the host compares bounds and elements.",
+        "br": "No variable-length array parameter exists; provide per-element-type overloads or a pointer + length variant."
+      }
+    },
+    {
+      "name": "ASSERT_EQUAL_BOOL",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit BOOL or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "BOOL",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "BOOL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_BOOL",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit BOOL or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "BOOL",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "BOOL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_SINT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit SINT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "SINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "SINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_SINT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit SINT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "SINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "SINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_INT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit INT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "INT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "INT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_INT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit INT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "INT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "INT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_DINT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit DINT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "DINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "DINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_DINT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit DINT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "DINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "DINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_LINT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit LINT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "LINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "LINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_LINT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit LINT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "LINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "LINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_USINT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit USINT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "USINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "USINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_USINT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit USINT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "USINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "USINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_UINT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit UINT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "UINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "UINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_UINT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit UINT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "UINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "UINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_UDINT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit UDINT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "UDINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "UDINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_UDINT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit UDINT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "UDINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "UDINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_ULINT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit ULINT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "ULINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "ULINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_ULINT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit ULINT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "ULINT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "ULINT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_BYTE",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit BYTE or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "BYTE",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "BYTE",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_BYTE",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit BYTE or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "BYTE",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "BYTE",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_WORD",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit WORD or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "WORD",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "WORD",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_WORD",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit WORD or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "WORD",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "WORD",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_DWORD",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit DWORD or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "DWORD",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "DWORD",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_DWORD",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit DWORD or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "DWORD",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "DWORD",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_LWORD",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit LWORD or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "LWORD",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "LWORD",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_LWORD",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit LWORD or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "LWORD",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "LWORD",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_REAL",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit REAL or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "REAL",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "REAL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_REAL",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit REAL or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "REAL",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "REAL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_LREAL",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit LREAL or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "LREAL",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "LREAL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_LREAL",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit LREAL or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "LREAL",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "LREAL",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_STRING",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit STRING or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_STRING",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit STRING or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_WSTRING",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit WSTRING or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "WSTRING",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "WSTRING",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_WSTRING",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit WSTRING or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "WSTRING",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "WSTRING",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_TIME",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit TIME or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "TIME",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "TIME",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_TIME",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit TIME or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "TIME",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "TIME",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_DATE",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit DATE or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "DATE",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "DATE",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_DATE",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit DATE or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "DATE",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "DATE",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_TOD",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit TOD or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "TOD",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "TOD",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_TOD",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit TOD or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "TOD",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "TOD",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_EQUAL_DT",
+      "description": "Typed ASSERT_EQUAL: fails when either argument does not fit DT or the values differ.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "DT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "DT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ASSERT_NOT_EQUAL_DT",
+      "description": "Typed ASSERT_NOT_EQUAL: fails when either argument does not fit DT or the values are equal.",
+      "parameters": [
+        {
+          "name": "actual",
+          "type": "DT",
+          "optional": false
+        },
+        {
+          "name": "expected",
+          "type": "DT",
+          "optional": false
+        },
+        {
+          "name": "message",
+          "type": "STRING",
+          "optional": true
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "RUN_CYCLES",
+      "description": "Runs n scan cycles of the suite under test.",
+      "parameters": [
+        {
+          "name": "n",
+          "type": "DINT",
+          "optional": false
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "RUN_UNTIL",
+      "description": "Runs cycles until the ST expression is TRUE; returns the number of cycles run and fails after maxCycles.",
+      "parameters": [
+        {
+          "name": "expression",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "maxCycles",
+          "type": "DINT",
+          "optional": false
+        }
+      ],
+      "returns": "DINT"
+    },
+    {
+      "name": "MOCK",
+      "description": "Replaces the function block instance at the path with a mock that records calls and skips its body.",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "STRING",
+          "optional": false
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "MOCK_RETURNS",
+      "description": "Sets the value a mocked instance output (path ends with the output name) returns after each call.",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "value",
+          "type": "ANY",
+          "optional": false
+        }
+      ],
+      "returns": null,
+      "vendorNotes": {
+        "twincat": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
+        "br": "Automation Studio has no ANY: provide one overload-style function per typed variant (ASSERT_EQUAL_<TYPE>) and use the typed variants in tests."
+      }
+    },
+    {
+      "name": "EXPECT_CALLS",
+      "description": "Fails unless the mocked instance was called exactly count times.",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "count",
+          "type": "DINT",
+          "optional": false
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "EXPECT_CALLED_WITH",
+      "description": "Fails unless some recorded call of the mocked instance had the named input equal to value.",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "input",
+          "type": "STRING",
+          "optional": false
+        },
+        {
+          "name": "value",
+          "type": "ANY",
+          "optional": false
+        }
+      ],
+      "returns": null,
+      "vendorNotes": {
+        "twincat": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
+        "br": "Automation Studio has no ANY: provide one overload-style function per typed variant (ASSERT_EQUAL_<TYPE>) and use the typed variants in tests."
+      }
+    },
+    {
+      "name": "EXPECT_NOT_CALLED",
+      "description": "Fails when the mocked instance was called at all.",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "STRING",
+          "optional": false
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "FOR_EACH_ROW",
+      "description": "Reruns the rest of the test once per row of a suite-level array of structs, each row on a fresh suite instance.",
+      "parameters": [
+        {
+          "name": "table",
+          "type": "STRING",
+          "optional": false
+        }
+      ],
+      "returns": null
+    },
+    {
+      "name": "ROW",
+      "description": "Returns a copy of the current row of the FOR_EACH_ROW table.",
+      "parameters": [],
+      "returns": "ANY",
+      "vendorNotes": {
+        "twincat": "The return type depends on the table; declare it as ANY or generate one accessor per row struct type.",
+        "br": "No ANY return type exists; use a per-struct accessor or read the table directly."
+      }
+    }
+  ]
+}

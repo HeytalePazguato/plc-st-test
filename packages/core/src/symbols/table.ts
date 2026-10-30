@@ -14,6 +14,7 @@ import { parseSource, type ParsedFile } from '../parser/parse.js'
 import { parseStatementFragment, wrapStatementFragment, STATEMENT_FRAGMENT_LINE_OFFSET } from '../parser/fragment.js'
 import { IecError } from '../errors.js'
 import { verifyImplements } from '../oop/interface.js'
+import { isVendorTestLib } from '../vendorlib.js'
 import type {
   TypeResolver,
   ResolvedType,
@@ -389,7 +390,7 @@ export function buildSymbolTable(
   return table
 }
 
-/** Build a symbol table from every unit of `project`, attaching ACTION units to their owning POUs; all locations are mapped back through each unit's `SourceMap`. */
+/** Build a symbol table from every unit of `project`, attaching ACTION units to their owning POUs; all locations are mapped back through each unit's `SourceMap`. The units of a `PlcStTest` library reference are skipped, since the runner implements those functions as host functions. */
 export function buildSymbolTableFromProject(
   project: Project,
   language: Language,
@@ -398,8 +399,10 @@ export function buildSymbolTableFromProject(
   const table = new SymbolTable({ caseSensitive: opts.caseSensitive })
   const units: DeclarationUnit[] = []
   const actions: { unit: SourceUnit; text: string }[] = []
+  const vendorTestUnits = new Set(project.libraries.filter(isVendorTestLib).flatMap((l) => l.resolvedUnits ?? []))
 
   for (const unit of project.units) {
+    if (vendorTestUnits.has(unit.id)) continue
     const text = preprocessUnit(unit, opts.preprocess)
     if (unit.role === 'action') {
       // Attached after every POU is collected, so an owner declared in a later unit is still found.
