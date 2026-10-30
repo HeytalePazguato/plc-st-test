@@ -15,7 +15,7 @@ import type { ClockView, EvalContext } from './context.js'
 import { Scope, ScopeChainImpl } from './scope.js'
 import { evalExpression, fail, isThis } from './expressions.js'
 import { execBody, storeValue } from './statements.js'
-import { chargeAllocation, cloneValue, defaultValue, elementaryType, type IecValue } from './values.js'
+import { chargeAllocation, cloneValue, defaultValue, elementaryType, type ConstEvaluator, type IecValue } from './values.js'
 import { IecType, isBigIntType } from './numeric.js'
 import type { Action, Method, Pou, SymbolTable, VarEntry } from '../symbols/table.js'
 import type { Session } from '../session.js'
@@ -30,18 +30,6 @@ export const HOSTFN_SHADOWS_POU = 'HOSTFN_SHADOWS_POU'
 
 /** Hidden back-reference from an instance's struct value to its `FbInstance`. */
 const INSTANCE = Symbol('plc-st.fbInstance')
-
-/** Initializer node types `defaultValue` does not evaluate itself; they are evaluated through `evalExpression` when a scalar variable is created. */
-const EVALUATED_INITIALIZERS: readonly string[] = [
-  'time_literal',
-  'date_literal',
-  'time_of_day_literal',
-  'date_and_time_literal',
-  'typed_literal',
-  'unary_expression',
-  'binary_expression',
-  'parenthesized_expression',
-]
 
 // ---------------------------------------------------------------------------
 // Frames and instances.
@@ -443,15 +431,22 @@ function stubFor(name: string, ctx: EvalContext): FbStubDef | undefined {
   return ctx.session.fbStubs.get(name.slice(name.lastIndexOf('.') + 1))
 }
 
-/** Initial value of a variable of type `typeNode`: a new nested instance for FB types (and arrays of them), else the declared default, with initializers such as `T#5s` evaluated. */
-function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children: FbInstance[]): IecValue {
+/** Evaluates VAR initializers as constant expressions in `ctx` (its chain sees earlier VAR CONSTANTs and the globals); `defaultValue` rejects function calls before delegating here. */
+function constEvaluator(ctx: EvalContext): ConstEvaluator {
+  const initCtx: EvalContext = { ...ctx, self: undefined }
+  return { evaluate: (node, enumHint) => evalExpression(node, initCtx, enumHint), error: (node, message) => fail(node, initCtx, message) }
+}
+
+/** Initial value of a variable of type `typeNode`: a new nested instance for FB types (and arrays of them), else the declared default with its initializer (`-5`, `T#5s`, `2 * 10`, a constant, an enum member, …) evaluated as a constant expression. `scope` is the frame being built, so initializers can name constants declared before them. */
+function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children: FbInstance[], scope?: Scope): IecValue {
+  if (scope !== undefined) ctx = { ...ctx, chain: chainOf([scope], ctx) }
   const fbType = fbTypeOf(typeNode, ctx)
   if (fbType !== undefined) {
     const inst = instantiate(fbType, ctx, depth + 1)
     children.push(inst)
     return inst.value
   }
-  const value = defaultValue(typeNode, ctx.symbols, ctx.session)
+  const value = defaultValue(typeNode, ctx.symbols, ctx.session, constEvaluator(ctx))
   if (typeNode.type === 'array_type' && value.kind === 'array') {
     const elemNode = typeNode.childForFieldName('element_type')
     const elemFb = elemNode === null ? undefined : fbTypeOf(elemNode, ctx)
@@ -463,13 +458,6 @@ function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children:
       }
     }
     return value
-  }
-  const init = typeNode.parent?.childForFieldName('initial_value') ?? null
-  if (init !== null && value.kind === 'scalar' && EVALUATED_INITIALIZERS.includes(init.type)) {
-    const slot: Slot = { value }
-    const initCtx: EvalContext = { ...ctx, chain: new ScopeChainImpl(ctx.globals ?? []), self: undefined }
-    storeValue(slot, evalExpression(init, initCtx), init, ctx)
-    return slot.value
   }
   return value
 }
@@ -487,7 +475,7 @@ function buildFrame(vars: VarEntry[], ctx: EvalContext, depth: number, fields?: 
     if (v.kind === 'inout') {
       slot = new InOutSlot(v.name)
     } else {
-      const value = initialValue(v.typeNode, ctx, depth, frame.children)
+      const value = initialValue(v.typeNode, ctx, depth, frame.children, frame.scope)
       if (v.kind === 'temp' || fields === undefined) {
         slot = { value }
       } else {
@@ -654,7 +642,7 @@ function instanceContext(inst: FbInstance, ctx: EvalContext, depth: number, loca
 /** Declare the result variable named after the function/method; `undefined` when it has no return type. */
 function declareResult(frame: Frame, name: string, typeNode: Node | undefined, ctx: EvalContext, depth: number): Slot | undefined {
   if (typeNode === undefined) return undefined
-  const slot: Slot = { value: initialValue(typeNode, ctx, depth, frame.children) }
+  const slot: Slot = { value: initialValue(typeNode, ctx, depth, frame.children, frame.scope) }
   frame.scope.declare(name, slot, 'local')
   return slot
 }

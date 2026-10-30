@@ -117,14 +117,16 @@ function stringLiteralText(text: string): string {
   return text
 }
 
-/** Scalar value for an elementary `type`, honouring `initNode` when present. */
-function scalarValue(
-  type: IecType,
-  initNode: Node | undefined,
-): number | bigint | boolean | string {
+/**
+ * Scalar value for an elementary `type`, honouring `initNode` when present. With a constant evaluator the initializer is a full IEC constant expression (negation, typed/based literals, arithmetic, constant references, enum members); without one only plain literals are understood and anything else keeps the default.
+ *
+ * Out-of-range constants are rejected rather than wrapped: IEC 61131-3 makes an initializer that does not fit its declared type a compile-time error (e.g. `SINT := -129`), so this raises an `IecRuntimeError` naming the variable instead of silently truncating. Run-time assignments still wrap through `storeValue`.
+ */
+function scalarValue(type: IecType, initNode: Node | undefined, env: InitEnv): number | bigint | boolean | string {
   if (initNode === undefined) {
     return scalarDefault(type)
   }
+  if (env.constEval !== undefined) return constantScalar(type, initNode, env, env.constEval)
   switch (initNode.type) {
     case 'boolean_literal':
       return initNode.text.toUpperCase() === 'TRUE'
@@ -147,6 +149,54 @@ function scalarValue(
     default:
       // time_literal, typed_literal, identifier, etc.: keep the IEC default.
       return scalarDefault(type)
+  }
+}
+
+/** Evaluate `initNode` as a constant expression and convert the result to the elementary `type`; a mismatched or out-of-range constant is an error naming the variable. */
+function constantScalar(type: IecType, initNode: Node, env: InitEnv, constEval: ConstEvaluator): number | bigint | boolean | string {
+  const v = evaluateConstant(initNode, undefined, env, constEval)
+  const bad = (why: string): IecRuntimeError => constEval.error(initNode, `cannot initialize '${env.owner}' (${type}) with ${why}`)
+  if (v.kind !== 'scalar' && v.kind !== 'enum') throw bad(v.kind)
+  const given = v.kind === 'enum' ? IecType.DINT : v.type
+  const raw = v.value
+  if (type === IecType.BOOL) {
+    if (given !== IecType.BOOL) throw bad(given)
+    return raw
+  }
+  if (type === IecType.STRING || type === IecType.WSTRING) {
+    if (given !== IecType.STRING && given !== IecType.WSTRING) throw bad(given)
+    return raw
+  }
+  if (type === IecType.TIME) {
+    if (v.kind !== 'scalar' || given !== IecType.TIME) throw bad(given)
+    return BigInt(raw as number | bigint)
+  }
+  if (typeof raw === 'boolean' || typeof raw === 'string') throw bad(given)
+  if (type === IecType.REAL || type === IecType.LREAL) {
+    if (given === IecType.TIME) throw bad(given)
+    return type === IecType.REAL ? froundReal(Number(raw)) : Number(raw)
+  }
+  if (given === IecType.REAL || given === IecType.LREAL || given === IecType.TIME) throw bad(given)
+  return fitInteger(raw, type, initNode, env, constEval)
+}
+
+/** `n` in the representation of integer `type`, or an error naming the variable when it does not fit. */
+function fitInteger(n: number | bigint, type: IecType, node: Node, env: InitEnv, constEval: ConstEvaluator): number | bigint {
+  const big = BigInt(n)
+  const fitted = isBigIntType(type) ? wrapInt(big, type) : wrapInt(Number(BigInt.asIntN(32, big)), type)
+  if (BigInt(fitted) !== big) throw constEval.error(node, `constant ${String(big)} is out of range for ${type} in initializer of '${env.owner}'`)
+  return fitted
+}
+
+/** Evaluate an initializer node through the injected evaluator, rejecting function calls first and naming the variable on failure. */
+function evaluateConstant(node: Node, enumHint: string | undefined, env: InitEnv, constEval: ConstEvaluator): IecValue {
+  const call = node.type === 'call_expression' ? node : node.descendantsOfType('call_expression')[0]
+  if (call !== undefined) throw constEval.error(call, `initializer must be a constant expression (variable '${env.owner}' calls '${call.childForFieldName('function')?.text ?? call.text}')`)
+  try {
+    return constEval.evaluate(node, enumHint)
+  } catch (err) {
+    if (err instanceof IecRuntimeError) throw new IecRuntimeError(`${err.message} (in initializer of '${env.owner}')`)
+    throw err
   }
 }
 
@@ -178,8 +228,26 @@ function findInitializer(typeNode: Node): Node | undefined {
 /**
  * Produce the IEC initial value for the type that `typeNode` describes. If the owning declaration carries an initializer it is honoured, otherwise the IEC default for the type is used. Named types are looked up through `resolver`.
  */
-export function defaultValue(typeNode: Node, resolver: TypeResolver, meter?: AllocationMeter): IecValue {
-  return buildDefault(typeNode, findInitializer(typeNode), resolver, meter)
+export function defaultValue(typeNode: Node, resolver: TypeResolver, meter?: AllocationMeter, constEval?: ConstEvaluator): IecValue {
+  return buildDefault(typeNode, findInitializer(typeNode), { resolver, meter, constEval, owner: ownerName(typeNode) })
+}
+
+/**
+ * Evaluates VAR initializers as IEC constant expressions. It is injected by the interpreter (which owns the expression evaluator and the scope that constants live in) so this module never imports `expressions.ts`; without one only plain literals are honoured.
+ */
+export interface ConstEvaluator {
+  /** Evaluate a constant expression node; `enumHint` names the enum type a bare member resolves against first. */
+  evaluate(node: Node, enumHint?: string): IecValue
+  /** An `IecRuntimeError` whose message ends with `node`'s original source location. */
+  error(node: Node, message: string): IecRuntimeError
+}
+
+/** What `buildDefault` threads through the type walk: type lookup, allocation accounting, the optional constant evaluator and the declared name used in errors. */
+interface InitEnv {
+  resolver: TypeResolver
+  meter?: AllocationMeter
+  constEval?: ConstEvaluator
+  owner: string
 }
 
 /** Allocation accounting target; a `Session` satisfies it. Without a meter nothing is counted or limited. */
@@ -199,17 +267,13 @@ export function chargeAllocation(meter: AllocationMeter | undefined, n: number):
   meter.allocation += n
 }
 
-function buildDefault(
-  typeNode: Node,
-  initNode: Node | undefined,
-  resolver: TypeResolver,
-  meter?: AllocationMeter,
-): IecValue {
+function buildDefault(typeNode: Node, initNode: Node | undefined, env: InitEnv): IecValue {
+  const { meter } = env
   switch (typeNode.type) {
     case 'elementary_type': {
       chargeAllocation(meter, 1)
       const type = elementaryToIecType(typeNode.text)
-      return { kind: 'scalar', type, value: scalarValue(type, initNode) }
+      return { kind: 'scalar', type, value: scalarValue(type, initNode, env) }
     }
     case 'subrange_type': {
       chargeAllocation(meter, 1)
@@ -218,20 +282,20 @@ function buildDefault(
         (c) => c.type === 'elementary_type',
       )
       const type = base ? elementaryToIecType(base.text) : IecType.INT
-      return { kind: 'scalar', type, value: scalarValue(type, initNode) }
+      return { kind: 'scalar', type, value: scalarValue(type, initNode, env) }
     }
     case 'string_type':
-      return stringDefault(typeNode, initNode, meter)
+      return stringDefault(typeNode, initNode, env)
     case 'array_type':
-      return arrayDefault(typeNode, initNode, resolver, meter)
+      return arrayDefault(typeNode, initNode, env)
     case 'enumerated_type_inline':
       chargeAllocation(meter, 1)
       return inlineEnumDefault(typeNode, '')
     case 'structure_type_inline':
-      return inlineStructDefault(typeNode, '', resolver, meter)
+      return inlineStructDefault(typeNode, '', env)
     case 'identifier':
     case 'qualified_identifier':
-      return namedDefault(typeNode.text, initNode, resolver, meter)
+      return namedDefault(typeNode.text, initNode, env)
     default:
       // Unknown specifier (pointer/reference/generic): use an opaque struct.
       chargeAllocation(meter, 1)
@@ -239,7 +303,8 @@ function buildDefault(
   }
 }
 
-function stringDefault(typeNode: Node, initNode: Node | undefined, meter?: AllocationMeter): IecValue {
+function stringDefault(typeNode: Node, initNode: Node | undefined, env: InitEnv): IecValue {
+  const { meter } = env
   const type = typeNode.text.toUpperCase().startsWith('WSTRING')
     ? IecType.WSTRING
     : IecType.STRING
@@ -253,7 +318,9 @@ function stringDefault(typeNode: Node, initNode: Node | undefined, meter?: Alloc
   }
   chargeAllocation(meter, 1)
   let value = ''
-  if (initNode !== undefined && initNode.type === 'string_literal') {
+  if (initNode !== undefined && env.constEval !== undefined) {
+    value = constantScalar(type, initNode, env, env.constEval) as string
+  } else if (initNode !== undefined && initNode.type === 'string_literal') {
     value = stringLiteralText(initNode.text)
   }
   if (maxLen === undefined) return { kind: 'scalar', type, value }
@@ -308,7 +375,9 @@ function ownerName(typeNode: Node): string {
   return nameNode?.text ?? typeNode.text
 }
 
-function arrayDefault(typeNode: Node, initNode: Node | undefined, resolver: TypeResolver, meter?: AllocationMeter): IecValue {
+function arrayDefault(typeNode: Node, initNode: Node | undefined, env: InitEnv): IecValue {
+  const { meter } = env
+  const unmetered: InitEnv = { ...env, meter: undefined }
   const ranges = typeNode.childrenForFieldName('range')
   const dims: [number, number][] = []
   let total = 1
@@ -324,16 +393,16 @@ function arrayDefault(typeNode: Node, initNode: Node | undefined, resolver: Type
   const elemType = elemNode ? elemTypeOf(elemNode) : IecType.INT
   const data: IecValue[] = []
   // Validated against the element count before anything is allocated; initializers are laid out row-major, matching `data`.
-  const inits = arrayInitElements(initNode, ownerName(typeNode), total) ?? []
+  const inits = arrayInitElements(initNode, env.owner, total) ?? []
   if (total === 0) return { kind: 'array', elemType, dims, data }
-  const build = (i: number): IecValue => (elemNode ? buildDefault(elemNode, inits[i], resolver) : { kind: 'scalar', type: IecType.INT, value: 0 })
+  const build = (i: number): IecValue => (elemNode ? buildDefault(elemNode, inits[i], unmetered) : { kind: 'scalar', type: IecType.INT, value: 0 })
   if (meter === undefined) {
     for (let i = 0; i < total; i++) data.push(build(i))
     return { kind: 'array', elemType, dims, data }
   }
   // Build one element first (it charges its own slots), then check the remaining elements against the limit BEFORE building them, so a huge array is rejected without being allocated. The rest are built unmetered because their slots are charged here in bulk.
   const before = meter.allocation
-  data.push(elemNode ? buildDefault(elemNode, inits[0], resolver, meter) : build(0))
+  data.push(elemNode ? buildDefault(elemNode, inits[0], env) : build(0))
   const perElement = Math.max(1, meter.allocation - before)
   const rest = (total - 1) * perElement
   if (meter.allocation + rest > meter.limits.maxAllocatedElements) throw limitExceeded(meter, total * perElement)
@@ -373,13 +442,8 @@ function inlineEnumDefault(typeNode: Node, typeName: string): IecValue {
   return { kind: 'enum', typeName, value }
 }
 
-function inlineStructDefault(
-  typeNode: Node,
-  typeName: string,
-  resolver: TypeResolver,
-  meter?: AllocationMeter,
-): IecValue {
-  chargeAllocation(meter, 1)
+function inlineStructDefault(typeNode: Node, typeName: string, env: InitEnv): IecValue {
+  chargeAllocation(env.meter, 1)
   const fields = new Map<string, IecValue>()
   for (const f of typeNode.namedChildren) {
     if (f.type !== 'structure_field') continue
@@ -387,17 +451,13 @@ function inlineStructDefault(
     const fieldTypeNode = f.childForFieldName('type')
     if (nameNode === null || fieldTypeNode === null) continue
     const init = f.childForFieldName('default') ?? undefined
-    fields.set(nameNode.text, buildDefault(fieldTypeNode, init, resolver, meter))
+    fields.set(nameNode.text, buildDefault(fieldTypeNode, init, env))
   }
   return { kind: 'struct', typeName, fields }
 }
 
-function namedDefault(
-  name: string,
-  initNode: Node | undefined,
-  resolver: TypeResolver,
-  meter?: AllocationMeter,
-): IecValue {
+function namedDefault(name: string, initNode: Node | undefined, env: InitEnv): IecValue {
+  const { resolver, meter } = env
   const resolved = resolver.resolveType(name)
   if (resolved === undefined) {
     chargeAllocation(meter, 1)
@@ -414,8 +474,7 @@ function namedDefault(
         buildDefault(
           f.typeNode,
           overrides.get(f.name.toUpperCase()) ?? f.initNode ?? findInitializer(f.typeNode),
-          resolver,
-          meter,
+          env,
         ),
       )
     }
@@ -423,17 +482,20 @@ function namedDefault(
   }
   if (resolved.kind === 'enum') {
     chargeAllocation(meter, 1)
-    const value = enumDefaultValue(resolved, initNode)
+    const value = enumDefaultValue(resolved, initNode, env)
     return { kind: 'enum', typeName: resolved.typeName, value }
   }
   // alias: recurse on the aliased type. The variable's own initializer (if any) wins over the alias's declared default.
-  return buildDefault(resolved.typeNode, initNode ?? resolved.initNode, resolver, meter)
+  return buildDefault(resolved.typeNode, initNode ?? resolved.initNode, env)
 }
 
-function enumDefaultValue(
-  resolved: EnumTypeInfo,
-  initNode: Node | undefined,
-): number {
+function enumDefaultValue(resolved: EnumTypeInfo, initNode: Node | undefined, env: InitEnv): number {
+  if (initNode !== undefined && env.constEval !== undefined) {
+    const v = evaluateConstant(initNode, resolved.typeName, env, env.constEval)
+    if (v.kind === 'enum') return v.value
+    if (v.kind === 'scalar' && isIntType(v.type)) return Number(v.value)
+    throw env.constEval.error(initNode, `cannot initialize '${env.owner}' (${resolved.typeName}) with ${v.kind === 'scalar' ? v.type : v.kind}`)
+  }
   if (initNode !== undefined) {
     if (
       initNode.type === 'identifier' ||
