@@ -1,0 +1,730 @@
+/**
+ * POU dispatch: host functions, user FUNCTIONs, FUNCTION_BLOCK / PROGRAM instances, METHODs, ACTIONs and host-implemented FB stubs, plus instance lifecycle (dialect `onInstantiate` / `onDispose` hooks).
+ *
+ * Instance representation: an FB (or program) instance is an `FbInstance` whose `value` is an ordinary struct `IecValue`. Its `fields` map is the single storage of the instance's VAR_INPUT, VAR_OUTPUT and VAR members (nested FB members hold the nested instance's own `value`), so `fb.Q`, `fb.inner.x` and assignments to `fb.IN` go through the expression evaluator's normal struct-member path. The instance `scope` declares those same members as live views over the map (plus VAR_TEMP slots, reset on every body invocation, and VAR_IN_OUT forwarding slots re-bound to the caller's variable on each call), so the body sees them by name. The struct value carries a hidden, non-enumerable back-reference to its `FbInstance` (`fbInstanceOf`), which is how a call such as `fb()` / `fb.M()` / `fbs[i]()` finds the instance from the value the evaluator resolves; copies made by `cloneValue` are plain structs without it.
+ *
+ * Resolution order of `callPou(callee, …)`: (1) a session host function, (2) a user FUNCTION, (3) an FB/program instance named by the callee (user or stub FB), (4) a METHOD `inst.M()` (also `THIS^.M()`, `SUPER^.M()` and a bare `M()` inside the owner), (5) an ACTION `inst.A()` or a bare `A()` inside the owner. A host function that shadows a user POU wins and records one `HOSTFN_SHADOWS_POU` warning per name on the session.
+ *
+ * Arguments bind by name or positionally over the VAR_INPUT / VAR_IN_OUT parameters in declaration order (inherited parameters first); a named argument for a VAR_OUTPUT is an output binding (`Q => target`) copied back after the call. VAR_IN_OUT needs a variable argument. Every POU activation counts against `limits.maxRecursionDepth`.
+ */
+
+import type { Node } from 'web-tree-sitter'
+import type { CallArg, DialectHooks, FbIo, FbInstanceRef, FbStubDef, HostCallContext, HostFnDef, Slot, VarSpec } from '@plc-st/plugin-api'
+import type { OriginalLocation } from '@plc-st/project-model'
+import type { ClockView, EvalContext } from './context.js'
+import { Scope, ScopeChainImpl } from './scope.js'
+import { evalExpression, fail, isThis } from './expressions.js'
+import { execBody, storeValue } from './statements.js'
+import { cloneValue, defaultValue, elementaryType, type IecValue } from './values.js'
+import { IecType, isBigIntType } from './numeric.js'
+import type { Action, Method, Pou, SymbolTable, VarEntry } from '../symbols/table.js'
+import type { Session } from '../session.js'
+import type { Limits } from '../limits.js'
+import { IecError, IecRuntimeError } from '../errors.js'
+import { caseKey } from '../case.js'
+
+type StructValue = Extract<IecValue, { kind: 'struct' }>
+
+/** Warning code recorded when a host function hides a user POU of the same name. */
+export const HOSTFN_SHADOWS_POU = 'HOSTFN_SHADOWS_POU'
+
+/** Hidden back-reference from an instance's struct value to its `FbInstance`. */
+const INSTANCE = Symbol('plc-st.fbInstance')
+
+/** Initializer node types `defaultValue` does not evaluate itself; they are evaluated through `evalExpression` when a scalar variable is created. */
+const EVALUATED_INITIALIZERS: readonly string[] = [
+  'time_literal',
+  'date_literal',
+  'time_of_day_literal',
+  'date_and_time_literal',
+  'typed_literal',
+  'unary_expression',
+  'binary_expression',
+  'parenthesized_expression',
+]
+
+// ---------------------------------------------------------------------------
+// Frames and instances.
+// ---------------------------------------------------------------------------
+
+/** A formal parameter of a POU activation, in declaration order. */
+export interface Param {
+  name: string
+  kind: 'input' | 'output' | 'inout'
+  slot: Slot
+}
+
+/** A VAR_TEMP slot and its declared type, re-initialised on every body invocation. */
+export interface Temp {
+  slot: Slot
+  typeNode: Node
+}
+
+/** The variables of one POU activation or instance. */
+export interface Frame {
+  scope: Scope
+  params: Param[]
+  temps: Temp[]
+  /** FB instances created for FB-typed members, in declaration order. */
+  children: FbInstance[]
+}
+
+/** VAR_IN_OUT parameter: forwards to the caller's slot bound by the most recent call. */
+class InOutSlot implements Slot {
+  target?: Slot
+
+  constructor(private readonly name: string) {}
+
+  get value(): IecValue {
+    if (this.target === undefined) throw new IecRuntimeError(`VAR_IN_OUT '${this.name}' is not bound to a variable`)
+    return this.target.value
+  }
+
+  set value(v: IecValue) {
+    if (this.target === undefined) throw new IecRuntimeError(`VAR_IN_OUT '${this.name}' is not bound to a variable`)
+    this.target.value = v
+  }
+}
+
+/** A live FUNCTION_BLOCK or PROGRAM instance (user-defined, or host-implemented when `stub` is set). */
+export class FbInstance implements FbInstanceRef {
+  readonly scope: Scope
+  readonly children: readonly FbInstance[]
+  /** @internal */
+  readonly params: readonly Param[]
+  /** @internal */
+  readonly temps: readonly Temp[]
+  /** @internal Set once `onDispose` has run. */
+  disposed = false
+
+  constructor(
+    readonly pou: Pou,
+    frame: Frame,
+    /** The instance's struct value; its fields are the instance's inputs, outputs and VARs. */
+    readonly value: StructValue,
+    private readonly ctx: EvalContext,
+    readonly stub?: { def: FbStubDef; state: unknown },
+  ) {
+    this.scope = frame.scope
+    this.children = frame.children
+    this.params = frame.params
+    this.temps = frame.temps
+    Object.defineProperty(value, INSTANCE, { value: this })
+  }
+
+  get typeName(): string {
+    return this.pou.name
+  }
+
+  hasMethod(name: string): boolean {
+    return findMethod(lineage(this.pou, this.ctx), name, this.ctx) !== undefined
+  }
+
+  callMethod(name: string, args: CallArg[]): IecValue | undefined {
+    const method = findMethod(lineage(this.pou, this.ctx), name, this.ctx)
+    if (method === undefined) throw new IecRuntimeError(`function block '${this.typeName}' has no method '${name}'`)
+    return invokeMethod(this, method, args, this.ctx)
+  }
+}
+
+/** The `FbInstance` behind an instance's struct value, or `undefined` for any other value (including copies of an instance). */
+export function fbInstanceOf(value: IecValue | undefined): FbInstance | undefined {
+  if (value?.kind !== 'struct') return undefined
+  return (value as StructValue & { [INSTANCE]?: FbInstance })[INSTANCE]
+}
+
+// ---------------------------------------------------------------------------
+// Public API.
+// ---------------------------------------------------------------------------
+
+export interface EvalContextOptions {
+  symbols: SymbolTable
+  session: Session
+  limits?: Limits
+  hooks?: DialectHooks
+  globals?: Scope[]
+  clock?: ClockView
+}
+
+/** A root evaluation context wired to `callPou`; its chain is the global scopes. Limits default to the session's. */
+export function createEvalContext(opts: EvalContextOptions): EvalContext {
+  const globals = opts.globals ?? []
+  return {
+    symbols: opts.symbols,
+    session: opts.session,
+    limits: opts.limits ?? opts.session.limits,
+    callPou,
+    chain: new ScopeChainImpl(globals),
+    hooks: opts.hooks,
+    globals,
+    clock: opts.clock,
+  }
+}
+
+/** Create an instance of the FUNCTION_BLOCK / PROGRAM `typeName` (a user POU, else a session FB stub). FB-typed members (and arrays of them) become nested instances; `onInstantiate` runs for every instance, nested ones first. */
+export function instantiateFb(typeName: string, ctx: EvalContext): FbInstance {
+  return instantiate(typeName, ctx, (ctx.depth ?? 0) + 1)
+}
+
+/** Run `onDispose` for `inst` and its nested instances, depth-first (children before their parent); each instance is disposed at most once. */
+export function disposeFb(inst: FbInstance, ctx: EvalContext): void {
+  if (inst.disposed) return
+  for (const child of inst.children) disposeFb(child, ctx)
+  inst.disposed = true
+  ctx.hooks?.onDispose?.(inst, hostContext(ctx, inst.pou.bodyNode))
+}
+
+/** Call `callee` with already-evaluated `args`; `undefined` for a call without a result. `node` is the call's function expression when the call comes from source. */
+export function callPou(callee: string, args: CallArg[], ctx: EvalContext, node?: Node): IecValue | undefined {
+  const host = ctx.session.hostFns.get(callee)
+  if (host !== undefined) return callHost(host, callee, args, ctx, node)
+
+  const pou = ctx.symbols.getPou(callee)
+  if (pou?.kind === 'function') return callFunction(pou, args, ctx, node)
+
+  const target = resolveTarget(callee, ctx, node)
+  switch (target?.kind) {
+    case 'instance':
+      return callInstance(target.inst, args, ctx, node)
+    case 'method':
+      return invokeMethod(target.inst, target.method, args, ctx, node)
+    case 'action':
+      return invokeAction(target.inst, target.action, args, ctx, node)
+    default:
+      throw error(ctx, node, `'${callee}' is not a function, function block instance, method or action`)
+  }
+}
+
+/** Invoke an instance's body (or its stub's `call`) with `args`: bind inputs/in-outs, reset VAR_TEMP, run, copy output bindings back. Used for `fb(...)` and by the cycle engine for program instances. */
+export function callInstance(inst: FbInstance, args: CallArg[], ctx: EvalContext, node?: Node): undefined {
+  const depth = enter(ctx, node, inst.typeName)
+  const locNode = node ?? inst.pou.bodyNode
+  const outputs = bindArgs(inst.params, args, ctx, node, locNode, inst.typeName)
+  if (inst.stub !== undefined) {
+    inst.stub.def.call(inst.stub.state, fbIo(inst, ctx, locNode), hostContext(ctx, node))
+  } else {
+    const inner = instanceContext(inst, ctx, depth)
+    for (const t of inst.temps) t.slot.value = initialValue(t.typeNode, inner, depth, [])
+    runBody(bodyStatements(inst.pou.bodyNode), inner, inst.pou.bodyNode)
+  }
+  copyOutputs(outputs, ctx, locNode)
+  return undefined
+}
+
+// ---------------------------------------------------------------------------
+// Errors, locations, host call context.
+// ---------------------------------------------------------------------------
+
+function error(ctx: EvalContext, node: Node | undefined, message: string): IecRuntimeError {
+  return node === undefined ? new IecRuntimeError(message) : fail(node, ctx, message)
+}
+
+const UNKNOWN_LOCATION: OriginalLocation = { file: '<unknown>', line: 0, col: 0 }
+
+function locationOf(node: Node | undefined, ctx: EvalContext): OriginalLocation {
+  if (node === undefined) return UNKNOWN_LOCATION
+  try {
+    return ctx.symbols.locate(node)
+  } catch (err) {
+    if (!(err instanceof IecError)) throw err
+    return UNKNOWN_LOCATION
+  }
+}
+
+function hostContext(ctx: EvalContext, node: Node | undefined): HostCallContext {
+  const location = locationOf(node, ctx)
+  return {
+    get cycle(): number {
+      return ctx.clock?.cycle ?? 0
+    },
+    get nowNs(): bigint {
+      return ctx.clock?.nowNs ?? 0n
+    },
+    location,
+    resolvePath: (path) => resolvePath(path, ctx),
+    warn: (code, message) => {
+      ctx.session.warn(code, message, location)
+    },
+  }
+}
+
+/** Enter a POU activation: the callee's depth, or a located error when it exceeds `limits.maxRecursionDepth`. */
+function enter(ctx: EvalContext, node: Node | undefined, what: string): number {
+  const depth = (ctx.depth ?? 0) + 1
+  const max = ctx.limits.maxRecursionDepth
+  if (depth > max) throw error(ctx, node, `call depth exceeded the maximum of ${String(max)} (limits.maxRecursionDepth) calling '${what}'`)
+  return depth
+}
+
+// ---------------------------------------------------------------------------
+// Names and paths.
+// ---------------------------------------------------------------------------
+
+function sameKey(a: string, b: string, ctx: EvalContext): boolean {
+  return caseKey(a, ctx.session.caseSensitive) === caseKey(b, ctx.session.caseSensitive)
+}
+
+function fieldKey(s: StructValue, name: string, ctx: EvalContext): string | undefined {
+  if (s.fields.has(name)) return name
+  for (const key of s.fields.keys()) if (sameKey(key, name, ctx)) return key
+  return undefined
+}
+
+function isSuper(node: Node): boolean {
+  if (node.type === 'parenthesized_expression') return node.namedChildren.some(isSuper)
+  if (node.type === 'super_expression') return true
+  const pointer = node.type === 'dereference_expression' ? node.childForFieldName('pointer') : null
+  return pointer !== null && isSuper(pointer)
+}
+
+function isSelfText(head: string): boolean {
+  return /^(THIS|SUPER)\^?$/i.test(head)
+}
+
+/** Value denoted by a dotted path (`fb`, `fb.inner`, `THIS^.inner`, `GVL.x`), or `undefined` when any segment is missing. */
+function valueAtPath(parts: string[], ctx: EvalContext): IecValue | undefined {
+  const [head, ...rest] = parts
+  let v = isSelfText(head) ? ctx.self?.value : ctx.chain.lookup(head)?.value
+  for (const part of rest) {
+    if (v?.kind !== 'struct') return undefined
+    const key = fieldKey(v, part, ctx)
+    v = key === undefined ? undefined : v.fields.get(key)
+  }
+  return v
+}
+
+/** Value denoted by a callee expression node, or `undefined` when it does not name stored data. Array indices are evaluated (and bounds-checked). */
+function valueAtNode(node: Node, ctx: EvalContext): IecValue | undefined {
+  switch (node.type) {
+    case 'identifier':
+      return ctx.chain.lookup(node.text)?.value
+    case 'parenthesized_expression': {
+      const inner = node.namedChildren.find((c) => c.type !== 'comment')
+      return inner === undefined ? undefined : valueAtNode(inner, ctx)
+    }
+    case 'member_access_expression': {
+      const object = node.childForFieldName('object')
+      const member = node.childForFieldName('member')
+      const base = object === null ? undefined : valueAtNode(object, ctx)
+      if (base?.kind !== 'struct' || member === null) return undefined
+      const key = fieldKey(base, member.text, ctx)
+      return key === undefined ? undefined : base.fields.get(key)
+    }
+    case 'index_expression':
+      return evalExpression(node, ctx)
+    default:
+      return isThis(node) || isSuper(node) ? ctx.self?.value : undefined
+  }
+}
+
+/** `HostCallContext.resolvePath`: the slot of a dotted variable path; member slots are live views. */
+function resolvePath(path: string, ctx: EvalContext): Slot | undefined {
+  const parts = path.split('.').map((p) => p.trim())
+  if (parts.length === 1) return ctx.chain.lookup(parts[0])
+  const parent = valueAtPath(parts.slice(0, -1), ctx)
+  if (parent?.kind !== 'struct') return undefined
+  const key = fieldKey(parent, parts[parts.length - 1], ctx)
+  return key === undefined ? undefined : fieldSlot(parent.fields, key)
+}
+
+/** The inheritance chain of `pou`: itself, then its EXTENDS base, and so on. */
+function lineage(pou: Pou, ctx: EvalContext): Pou[] {
+  const chain: Pou[] = []
+  for (let p: Pou | undefined = pou; p !== undefined && !chain.includes(p); p = p.extendsName === undefined ? undefined : ctx.symbols.getPou(p.extendsName)) {
+    chain.push(p)
+  }
+  return chain
+}
+
+function findMethod(chain: Pou[], name: string, ctx: EvalContext): Method | undefined {
+  for (const pou of chain) {
+    const m = pou.methods.find((x) => sameKey(x.name, name, ctx) && x.bodyNode?.type === 'method_declaration')
+    if (m !== undefined) return m
+  }
+  return undefined
+}
+
+function findAction(chain: Pou[], name: string, ctx: EvalContext): Action | undefined {
+  for (const pou of chain) {
+    const a = pou.actions.find((x) => sameKey(x.name, name, ctx))
+    if (a !== undefined) return a
+  }
+  return undefined
+}
+
+type Target = { kind: 'instance'; inst: FbInstance } | { kind: 'method'; inst: FbInstance; method: Method } | { kind: 'action'; inst: FbInstance; action: Action }
+
+function resolveTarget(callee: string, ctx: EvalContext, node: Node | undefined): Target | undefined {
+  const parts = callee.split('.').map((p) => p.trim())
+  const whole = fbInstanceOf(node === undefined ? valueAtPath(parts, ctx) : valueAtNode(node, ctx))
+  if (whole !== undefined) return { kind: 'instance', inst: whole }
+
+  // Otherwise `<receiver>.<member>` names a method or action, or a bare name one of the running instance.
+  let receiver: FbInstance | undefined
+  let member: string
+  let fromBase = false
+  if (node !== undefined && node.type === 'member_access_expression') {
+    const object = node.childForFieldName('object')
+    const memberNode = node.childForFieldName('member')
+    if (object === null || memberNode === null) return undefined
+    receiver = fbInstanceOf(valueAtNode(object, ctx))
+    member = memberNode.text
+    fromBase = isSuper(object)
+  } else if (node === undefined && parts.length > 1) {
+    member = parts[parts.length - 1]
+    receiver = fbInstanceOf(valueAtPath(parts.slice(0, -1), ctx))
+    fromBase = parts.length === 2 && /^SUPER\^?$/i.test(parts[0])
+  } else if (node === undefined || node.type === 'identifier') {
+    receiver = ctx.self
+    member = callee
+  } else {
+    return undefined
+  }
+  if (receiver === undefined) return undefined
+
+  const chain = lineage(receiver.pou, ctx).slice(fromBase ? 1 : 0)
+  const method = findMethod(chain, member, ctx)
+  if (method !== undefined) return { kind: 'method', inst: receiver, method }
+  const action = findAction(chain, member, ctx)
+  if (action !== undefined) return { kind: 'action', inst: receiver, action }
+  return undefined
+}
+
+// ---------------------------------------------------------------------------
+// Variables.
+// ---------------------------------------------------------------------------
+
+/** A slot that reads and writes `fields[name]`. Writing a struct into a member holding an FB instance copies its members into that instance, so the instance link survives `fbA := fbB`. */
+function fieldSlot(fields: Map<string, IecValue>, name: string): Slot {
+  return {
+    get value(): IecValue {
+      return fields.get(name) as IecValue
+    },
+    set value(v: IecValue) {
+      const inst = fbInstanceOf(fields.get(name))
+      if (inst !== undefined && v.kind === 'struct') assignMembers(inst.value, v)
+      else fields.set(name, v)
+    },
+  }
+}
+
+function assignMembers(target: StructValue, source: StructValue): void {
+  for (const [key, v] of source.fields) {
+    const current = target.fields.get(key)
+    if (current === undefined) continue
+    const nested = fbInstanceOf(current)
+    if (nested !== undefined && v.kind === 'struct') assignMembers(nested.value, v)
+    else target.fields.set(key, cloneValue(v))
+  }
+}
+
+/** FB type named by a type specifier (a user FUNCTION_BLOCK or a session stub), if any. */
+function fbTypeOf(typeNode: Node, ctx: EvalContext): string | undefined {
+  if (typeNode.type !== 'identifier' && typeNode.type !== 'qualified_identifier') return undefined
+  return isFbType(typeNode.text, ctx) ? typeNode.text : undefined
+}
+
+function isFbType(name: string, ctx: EvalContext): boolean {
+  return ctx.symbols.getPou(name)?.kind === 'functionBlock' || stubFor(name, ctx) !== undefined
+}
+
+/** A session FB stub by name; a namespace-qualified name (`Tc2_Standard.TON`) falls back to its last segment. */
+function stubFor(name: string, ctx: EvalContext): FbStubDef | undefined {
+  const direct = ctx.session.fbStubs.get(name)
+  if (direct !== undefined || !name.includes('.')) return direct
+  return ctx.session.fbStubs.get(name.slice(name.lastIndexOf('.') + 1))
+}
+
+/** Initial value of a variable of type `typeNode`: a new nested instance for FB types (and arrays of them), else the declared default, with initializers such as `T#5s` evaluated. */
+function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children: FbInstance[]): IecValue {
+  const fbType = fbTypeOf(typeNode, ctx)
+  if (fbType !== undefined) {
+    const inst = instantiate(fbType, ctx, depth + 1)
+    children.push(inst)
+    return inst.value
+  }
+  const value = defaultValue(typeNode, ctx.symbols)
+  if (typeNode.type === 'array_type' && value.kind === 'array') {
+    const elemNode = typeNode.childForFieldName('element_type')
+    const elemFb = elemNode === null ? undefined : fbTypeOf(elemNode, ctx)
+    if (elemFb !== undefined) {
+      for (let i = 0; i < value.data.length; i++) {
+        const inst = instantiate(elemFb, ctx, depth + 1)
+        children.push(inst)
+        value.data[i] = inst.value
+      }
+    }
+    return value
+  }
+  const init = typeNode.parent?.childForFieldName('initial_value') ?? null
+  if (init !== null && value.kind === 'scalar' && EVALUATED_INITIALIZERS.includes(init.type)) {
+    const slot: Slot = { value }
+    const initCtx: EvalContext = { ...ctx, chain: new ScopeChainImpl(ctx.globals ?? []), self: undefined }
+    storeValue(slot, evalExpression(init, initCtx), init, ctx)
+    return slot.value
+  }
+  return value
+}
+
+/** True when `v` is an FB instance or an array of them (such VAR_TEMPs are created once, not re-created per call). */
+function holdsInstance(v: IecValue): boolean {
+  return fbInstanceOf(v) !== undefined || (v.kind === 'array' && fbInstanceOf(v.data[0]) !== undefined)
+}
+
+/** Declare `vars` in a new scope. With `fields`, inputs/outputs/VARs are stored in that map (an instance) and the scope holds views; otherwise they are plain slots (a function or method activation). */
+function buildFrame(vars: VarEntry[], ctx: EvalContext, depth: number, fields?: Map<string, IecValue>): Frame {
+  const frame: Frame = { scope: new Scope(ctx.session.caseSensitive), params: [], temps: [], children: [] }
+  for (const v of vars) {
+    let slot: Slot
+    if (v.kind === 'inout') {
+      slot = new InOutSlot(v.name)
+    } else {
+      const value = initialValue(v.typeNode, ctx, depth, frame.children)
+      if (v.kind === 'temp' || fields === undefined) {
+        slot = { value }
+      } else {
+        fields.set(v.name, value)
+        slot = fieldSlot(fields, v.name)
+      }
+      if (v.kind === 'temp' && !holdsInstance(value)) frame.temps.push({ slot, typeNode: v.typeNode })
+    }
+    frame.scope.declare(v.name, slot, v.kind)
+    if (v.kind === 'input' || v.kind === 'output' || v.kind === 'inout') frame.params.push({ name: v.name, kind: v.kind, slot })
+  }
+  return frame
+}
+
+/** Every variable of `pou`, inherited ones (from the root base) first. */
+function instanceVars(pou: Pou, ctx: EvalContext): VarEntry[] {
+  return lineage(pou, ctx)
+    .reverse()
+    .flatMap((p) => p.varBlocks.flatMap((b) => b.vars))
+}
+
+/** Default value of a stub variable from its `VarSpec` type string (`BOOL`, `TIME`, `STRING(80)`, an enum, a nested FB type). */
+function specValue(spec: VarSpec, ctx: EvalContext, depth: number, children: FbInstance[]): IecValue {
+  if (spec.init !== undefined) return cloneValue(spec.init)
+  const t = spec.type.trim()
+  const str = /^(W?STRING)\s*(?:[([]\s*(\d+)\s*[)\]])?$/i.exec(t)
+  if (str !== null) {
+    const type = str[1].toUpperCase() === 'WSTRING' ? IecType.WSTRING : IecType.STRING
+    return str[2] === undefined ? { kind: 'scalar', type, value: '' } : { kind: 'scalar', type, value: '', maxLength: Number(str[2]) }
+  }
+  const et = elementaryType(t)
+  if (et !== undefined) {
+    const value = et === IecType.BOOL ? false : isBigIntType(et) || et === IecType.TIME ? 0n : 0
+    return { kind: 'scalar', type: et, value }
+  }
+  const en = ctx.symbols.getEnum(t)
+  if (en !== undefined) return { kind: 'enum', typeName: en.typeName, value: en.members[0]?.value ?? 0 }
+  if (isFbType(t, ctx)) {
+    const inst = instantiate(t, ctx, depth + 1)
+    children.push(inst)
+    return inst.value
+  }
+  return { kind: 'struct', typeName: t, fields: new Map() }
+}
+
+function stubFrame(def: FbStubDef, ctx: EvalContext, depth: number, fields: Map<string, IecValue>): Frame {
+  const frame: Frame = { scope: new Scope(ctx.session.caseSensitive), params: [], temps: [], children: [] }
+  const groups: [VarSpec[], Param['kind']][] = [
+    [def.inputs, 'input'],
+    [def.inOuts ?? [], 'inout'],
+    [def.outputs, 'output'],
+  ]
+  for (const [specs, kind] of groups) {
+    for (const spec of specs) {
+      let slot: Slot
+      if (kind === 'inout') {
+        slot = new InOutSlot(spec.name)
+      } else {
+        fields.set(spec.name, specValue(spec, ctx, depth, frame.children))
+        slot = fieldSlot(fields, spec.name)
+      }
+      frame.scope.declare(spec.name, slot, kind)
+      frame.params.push({ name: spec.name, kind, slot })
+    }
+  }
+  return frame
+}
+
+/** The `Pou` record standing in for a host-implemented FB. */
+function stubPou(def: FbStubDef): Pou {
+  return { name: def.name, kind: 'functionBlock', methods: [], varBlocks: [], implementsNames: [], file: '<host>', unitId: '<host>', isTest: false, actions: [] }
+}
+
+function instantiate(typeName: string, ctx: EvalContext, depth: number): FbInstance {
+  const max = ctx.limits.maxRecursionDepth
+  if (depth > max) throw new IecRuntimeError(`instantiating '${typeName}' exceeded the maximum nesting depth of ${String(max)} (limits.maxRecursionDepth)`)
+  const fields = new Map<string, IecValue>()
+  const pou = ctx.symbols.getPou(typeName)
+  let inst: FbInstance
+  if (pou !== undefined && (pou.kind === 'functionBlock' || pou.kind === 'program')) {
+    const frame = buildFrame(instanceVars(pou, ctx), ctx, depth, fields)
+    inst = new FbInstance(pou, frame, { kind: 'struct', typeName: pou.name, fields }, ctx)
+  } else {
+    const def = stubFor(typeName, ctx)
+    if (def === undefined) throw new IecRuntimeError(`unknown function block type '${typeName}'`)
+    const frame = stubFrame(def, ctx, depth, fields)
+    inst = new FbInstance(stubPou(def), frame, { kind: 'struct', typeName: def.name, fields }, ctx, { def, state: def.createState?.() })
+  }
+  ctx.hooks?.onInstantiate?.(inst, hostContext(ctx, pou?.bodyNode))
+  return inst
+}
+
+// ---------------------------------------------------------------------------
+// Argument binding and body execution.
+// ---------------------------------------------------------------------------
+
+interface OutputBinding {
+  from: Slot
+  to: Slot
+}
+
+/** Store with the declared-type conversion of `storeValue` (located at `locNode`), or a plain copy when there is no node to locate errors with. */
+function store(slot: Slot, value: IecValue, ctx: EvalContext, locNode: Node | undefined): void {
+  if (locNode === undefined) slot.value = cloneValue(value)
+  else storeValue(slot, value, locNode, ctx)
+}
+
+function bindArgs(params: readonly Param[], args: CallArg[], ctx: EvalContext, node: Node | undefined, locNode: Node | undefined, owner: string): OutputBinding[] {
+  const positional = params.filter((p) => p.kind !== 'output')
+  const outputs: OutputBinding[] = []
+  let next = 0
+  for (const arg of args) {
+    let param: Param | undefined
+    if (arg.name === undefined) {
+      param = positional[next]
+      next += 1
+      if (param === undefined) throw error(ctx, node, `too many arguments for '${owner}' (it takes ${String(positional.length)} input/in-out parameter(s))`)
+    } else {
+      const name = arg.name
+      param = params.find((p) => sameKey(p.name, name, ctx))
+      if (param === undefined) throw error(ctx, node, `'${owner}' has no input, output or in-out parameter '${name}'`)
+    }
+    switch (param.kind) {
+      case 'input':
+        store(param.slot, arg.value, ctx, locNode)
+        break
+      case 'inout':
+        if (arg.slot === undefined) throw error(ctx, node, `VAR_IN_OUT '${param.name}' of '${owner}' needs a variable argument, not an expression`)
+        ;(param.slot as InOutSlot).target = arg.slot
+        break
+      case 'output':
+        if (arg.slot === undefined) throw error(ctx, node, `output '${param.name}' of '${owner}' must be bound to a variable (${param.name} => <variable>)`)
+        outputs.push({ from: param.slot, to: arg.slot })
+        break
+    }
+  }
+  return outputs
+}
+
+function copyOutputs(outputs: OutputBinding[], ctx: EvalContext, locNode: Node | undefined): void {
+  for (const { from, to } of outputs) store(to, from.value, ctx, locNode)
+}
+
+function bodyStatements(node: Node | undefined): Node[] {
+  return node === undefined ? [] : node.childrenForFieldName('body').filter((c) => c.isNamed && c.type !== 'comment')
+}
+
+/** Run a POU body; RETURN is normal completion, EXIT/CONTINUE outside a loop is an error. */
+function runBody(nodes: Node[], ctx: EvalContext, owner: Node | undefined): void {
+  const signal = execBody(nodes, ctx)
+  if (signal.type === 'exit' || signal.type === 'continue') throw error(ctx, owner, `${signal.type.toUpperCase()} outside a loop`)
+}
+
+function chainOf(scopes: Scope[], ctx: EvalContext): ScopeChainImpl {
+  return new ScopeChainImpl([...scopes, ...(ctx.globals ?? [])])
+}
+
+function instanceContext(inst: FbInstance, ctx: EvalContext, depth: number, local?: Scope): EvalContext {
+  return { ...ctx, chain: chainOf(local === undefined ? [inst.scope] : [local, inst.scope], ctx), self: inst, depth }
+}
+
+/** Declare the result variable named after the function/method; `undefined` when it has no return type. */
+function declareResult(frame: Frame, name: string, typeNode: Node | undefined, ctx: EvalContext, depth: number): Slot | undefined {
+  if (typeNode === undefined) return undefined
+  const slot: Slot = { value: initialValue(typeNode, ctx, depth, frame.children) }
+  frame.scope.declare(name, slot, 'local')
+  return slot
+}
+
+function disposeAll(children: readonly FbInstance[], ctx: EvalContext): void {
+  for (const child of children) disposeFb(child, ctx)
+}
+
+// ---------------------------------------------------------------------------
+// Callees.
+// ---------------------------------------------------------------------------
+
+function callHost(def: HostFnDef, callee: string, args: CallArg[], ctx: EvalContext, node: Node | undefined): IecValue | undefined {
+  const shadowed = ctx.symbols.getPou(callee)
+  if (shadowed !== undefined) {
+    const prefix = `host function '${def.name}' `
+    if (!ctx.session.warnings.some((w) => w.code === HOSTFN_SHADOWS_POU && w.message.startsWith(prefix))) {
+      ctx.session.warn(HOSTFN_SHADOWS_POU, `${prefix}shadows the user POU '${shadowed.name}' declared in ${shadowed.file}; calls resolve to the host function`, locationOf(node ?? shadowed.bodyNode, ctx))
+    }
+  }
+  if (args.length < def.minArgs || args.length > def.maxArgs) {
+    const expected = def.minArgs === def.maxArgs ? String(def.minArgs) : `${String(def.minArgs)}..${String(def.maxArgs)}`
+    throw error(ctx, node, `'${def.name}' takes ${expected} argument(s), got ${String(args.length)}`)
+  }
+  return def.call(args, hostContext(ctx, node))
+}
+
+/** A user FUNCTION: fresh variables on every call, result returned through the function-name variable. */
+function callFunction(pou: Pou, args: CallArg[], ctx: EvalContext, node: Node | undefined): IecValue | undefined {
+  const depth = enter(ctx, node, pou.name)
+  const locNode = node ?? pou.bodyNode
+  const frame = buildFrame(pou.varBlocks.flatMap((b) => b.vars), ctx, depth)
+  const result = declareResult(frame, pou.name, pou.bodyNode?.childForFieldName('return_type') ?? undefined, ctx, depth)
+  try {
+    const outputs = bindArgs(frame.params, args, ctx, node, locNode, pou.name)
+    runBody(bodyStatements(pou.bodyNode), { ...ctx, chain: chainOf([frame.scope], ctx), self: undefined, depth }, pou.bodyNode)
+    copyOutputs(outputs, ctx, locNode)
+  } finally {
+    disposeAll(frame.children, ctx)
+  }
+  return result === undefined ? undefined : cloneValue(result.value)
+}
+
+/** A METHOD of `inst`: fresh method variables in front of the instance scope, `THIS` bound to `inst`. */
+function invokeMethod(inst: FbInstance, method: Method, args: CallArg[], ctx: EvalContext, node?: Node): IecValue | undefined {
+  const what = `${inst.typeName}.${method.name}`
+  const depth = enter(ctx, node, what)
+  const locNode = node ?? method.bodyNode
+  const frame = buildFrame(method.varBlocks.flatMap((b) => b.vars), ctx, depth)
+  const result = declareResult(frame, method.name, method.returnTypeNode, ctx, depth)
+  try {
+    const outputs = bindArgs(frame.params, args, ctx, node, locNode, what)
+    runBody(bodyStatements(method.bodyNode), instanceContext(inst, ctx, depth, frame.scope), method.bodyNode)
+    copyOutputs(outputs, ctx, locNode)
+  } finally {
+    disposeAll(frame.children, ctx)
+  }
+  return result === undefined ? undefined : cloneValue(result.value)
+}
+
+/** An ACTION of `inst`: its body runs directly in the instance scope. */
+function invokeAction(inst: FbInstance, action: Action, args: CallArg[], ctx: EvalContext, node: Node | undefined): undefined {
+  const what = `${inst.typeName}.${action.name}`
+  if (args.length > 0) throw error(ctx, node, `action '${what}' takes no arguments`)
+  const depth = enter(ctx, node, what)
+  runBody(action.bodyNodes, instanceContext(inst, ctx, depth), action.bodyNodes[0] as Node | undefined)
+  return undefined
+}
+
+/** `FbIo` over a stub instance's inputs, outputs and in-outs. */
+function fbIo(inst: FbInstance, ctx: EvalContext, locNode: Node | undefined): FbIo {
+  const slotOf = (name: string): Slot => {
+    const slot = inst.scope.get(name)
+    if (slot === undefined) throw new IecRuntimeError(`function block '${inst.typeName}' has no variable '${name}'`)
+    return slot
+  }
+  return {
+    get: (name) => slotOf(name).value,
+    set: (name, v) => {
+      store(slotOf(name), v, ctx, locNode)
+    },
+  }
+}

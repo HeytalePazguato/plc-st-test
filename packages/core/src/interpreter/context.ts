@@ -3,8 +3,11 @@
  *
  * Tasks 2.1–2.6 are mutually recursive: an expression can call a POU, a POU runs statements, a statement evaluates expressions. To avoid import cycles and keep those tasks consistent, the primitives they all share live here. Later tasks extend `EvalContext` with their own fields (the CycleEngine in 2.5, the host-fn registry in 2.6, results/mocks in the runner/mock phases).
  */
-import type { CallArg, Slot } from '@plc-st/plugin-api'
+import type { Node } from 'web-tree-sitter'
+import type { CallArg, DialectHooks, Slot } from '@plc-st/plugin-api'
 import type { IecValue } from './values.js'
+import type { Scope } from './scope.js'
+import type { FbInstance } from './pou.js'
 import type { SymbolTable } from '../symbols/table.js'
 import type { Limits } from '../limits.js'
 import type { Session } from '../session.js'
@@ -28,16 +31,23 @@ export const NORMAL: ControlSignal = { type: 'normal' }
 
 
 /**
- * Calls a FUNCTION / FUNCTION_BLOCK / METHOD and returns its result value (or `undefined` for a void call). Implemented in task 2.4 and injected into the context so expressions (2.2) and statements (2.3) can invoke POUs WITHOUT importing `pou.ts` — that injection is what breaks the recursion cycle. The exact receiver/argument shape is finalized in 2.4.
+ * Calls a host function, FUNCTION, FB instance, METHOD or ACTION and returns its result value (or `undefined` for a void call). Implemented by `callPou` in pou.ts and injected into the context so expressions and statements can invoke POUs WITHOUT importing `pou.ts` — that injection is what breaks the recursion cycle. `node` is the call's `function` expression when the call comes from source: it locates errors and lets the dispatcher resolve receivers that are not plain name paths (e.g. `fbs[i]()`).
  */
 export type CallPou = (
   callee: string,
   args: CallArg[],
   ctx: EvalContext,
+  node?: Node,
 ) => IecValue | undefined
 
+/** Read-only view of the simulated clock, supplied by the cycle engine. */
+export interface ClockView {
+  readonly cycle: number
+  readonly nowNs: bigint
+}
+
 /**
- * The context threaded through every eval/exec call. Tasks add their own fields as they land: 2.5 → `engine`, 2.6 → `hostFns`, runner/mock phases → `results` / `mocks`.
+ * The context threaded through every eval/exec call. Tasks add their own fields as they land; the optional fields below are set by the POU dispatcher (`self`, `depth`) or by whoever builds the root context (`hooks`, `globals`, `clock`).
  */
 export interface EvalContext {
   symbols: SymbolTable
@@ -45,4 +55,14 @@ export interface EvalContext {
   limits: Limits
   callPou: CallPou
   session: Session
+  /** Dialect lifecycle hooks (onInstantiate / onDispose). */
+  hooks?: DialectHooks
+  /** Scopes visible from every POU body (GVLs, program instances), innermost first; a callee's chain is its own scope(s) followed by these. */
+  globals?: Scope[]
+  /** Simulated clock exposed to host functions and FB stubs; cycle 0 / 0 ns when absent. */
+  clock?: ClockView
+  /** The FB/program instance whose body, method or action is running (THIS, bare action/method calls). */
+  self?: FbInstance
+  /** Number of POU activations on the call stack, checked against `limits.maxRecursionDepth`. */
+  depth?: number
 }

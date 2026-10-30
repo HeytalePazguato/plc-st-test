@@ -7,7 +7,7 @@
  *
  * TIME values are nanoseconds as `bigint`. D#, TOD# and DT# literals fold onto TIME (as the value model does for the date/time family): DATE and DATE_AND_TIME are nanoseconds since 1970-01-01 UTC, TIME_OF_DAY is nanoseconds since midnight.
  *
- * Values returned for variables, members and elements are the stored objects themselves (no copy), so a caller that stores a result elsewhere must `cloneValue` it first. Pointers/references are not supported in core: such nodes, like any other unknown node type, are offered to the session's `nodeHandlers` before an `unsupported construct` error is raised.
+ * Values returned for variables, members and elements are the stored objects themselves (no copy), so a caller that stores a result elsewhere must `cloneValue` it first. `THIS` / `THIS^` evaluate to the running FB instance (`ctx.self`); other pointers/references are not supported in core: such nodes, like any other unknown node type, are offered to the session's `nodeHandlers` before an `unsupported construct` error is raised.
  */
 
 import type { Node } from 'web-tree-sitter'
@@ -200,7 +200,10 @@ export function evalExpression(node: Node, ctx: EvalContext, enumHint?: string):
       if (result === undefined) throw fail(node, ctx, `'${field(node, 'function').text}' does not return a value`)
       return result
     }
+    case 'this_expression':
+      return thisValue(node, ctx)
     default: {
+      if (node.type === 'dereference_expression' && isThis(node)) return thisValue(node, ctx)
       const handler = ctx.session.nodeHandlers.get(node.type)
       if (handler !== undefined) return handler(node, ctx) as IecValue
       throw fail(node, ctx, `unsupported construct ${node.type}`)
@@ -232,7 +235,8 @@ export function evalLValue(node: Node, ctx: EvalContext): Slot {
 
 /** Evaluate a call expression through `ctx.callPou`; `undefined` for a call without a result (valid as an invocation statement). Variables passed as arguments carry their `Slot` so VAR_IN_OUT parameters can alias them; `name => target` output bindings always carry the target's slot. */
 export function evalCall(node: Node, ctx: EvalContext): IecValue | undefined {
-  const callee = field(node, 'function').text
+  const fnNode = field(node, 'function')
+  const callee = fnNode.text
   const args: CallArg[] = []
   for (const arg of operands(field(node, 'arguments'))) {
     if (arg.type !== 'named_argument') {
@@ -248,7 +252,20 @@ export function evalCall(node: Node, ctx: EvalContext): IecValue | undefined {
       args.push({ name, ...argument(valueNode, ctx) })
     }
   }
-  return ctx.callPou(callee, args, ctx)
+  return ctx.callPou(callee, args, ctx, fnNode)
+}
+
+/** True for `THIS` and `THIS^` (possibly parenthesised): the running FB instance. */
+export function isThis(node: Node): boolean {
+  if (node.type === 'parenthesized_expression') return isThis(inner(node))
+  if (node.type === 'this_expression') return true
+  return node.type === 'dereference_expression' && isThis(field(node, 'pointer'))
+}
+
+/** The running instance's value for `THIS` / `THIS^`. */
+function thisValue(node: Node, ctx: EvalContext): IecValue {
+  if (ctx.self === undefined) throw fail(node, ctx, `'${node.text}' used outside a function block`)
+  return ctx.self.value
 }
 
 /** Expression node types core evaluates itself (used to tell "not assignable" from "unsupported"). */
@@ -269,6 +286,7 @@ const EXPRESSION_TYPES: readonly string[] = [
   'unary_expression',
   'binary_expression',
   'call_expression',
+  'this_expression',
 ]
 
 // ---------------------------------------------------------------------------
@@ -407,7 +425,7 @@ function isAddressable(node: Node, ctx: EvalContext): boolean {
     case 'index_expression':
       return isAddressable(field(node, 'object'), ctx)
     default:
-      return false
+      return isThis(node) && ctx.self !== undefined
   }
 }
 
