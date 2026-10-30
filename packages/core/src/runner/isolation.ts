@@ -12,6 +12,7 @@ import { createEvalContext, disposeFb, instantiateFb } from '../interpreter/pou.
 import { registerStdlib } from '../interpreter/stdlib/index.js'
 import { registerCycleFns } from './cyclefns.js'
 import type { Limits } from '../limits.js'
+import { registerMockExpectations } from '../mock/expect.js'
 import { registerMock } from '../mock/mock.js'
 import { registerMockReturns } from '../mock/returns.js'
 import { Session } from '../session.js'
@@ -31,7 +32,7 @@ export interface DefaultSessionOptions {
   limits?: Limits
 }
 
-/** A session factory registering the assertions (enum names resolved through the table), the IEC standard library, RUN_CYCLES / RUN_UNTIL and MOCK / MOCK_RETURNS. */
+/** A session factory registering the assertions (enum names resolved through the table), the IEC standard library, RUN_CYCLES / RUN_UNTIL, MOCK / MOCK_RETURNS and the EXPECT_* call expectations. */
 export function defaultSessionFactory(opts: DefaultSessionOptions): () => Session {
   return () => {
     const session = new Session({ caseSensitive: opts.table.isCaseSensitive, limits: opts.limits })
@@ -40,6 +41,7 @@ export function defaultSessionFactory(opts: DefaultSessionOptions): () => Sessio
     registerCycleFns(session)
     registerMock(session)
     registerMockReturns(session)
+    registerMockExpectations(session)
     return session
   }
 }
