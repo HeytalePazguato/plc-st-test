@@ -81,6 +81,20 @@ export interface Pou {
   actions: Action[]
 }
 
+/** One variable declared with a named type that nothing defines, and where it was declared. */
+export interface UnresolvedTypeUse {
+  pou: Pou
+  /** Set when the variable belongs to a method of `pou` rather than to `pou` itself. */
+  method?: Method
+  entry: VarEntry
+}
+
+/** A named type that is referenced by variable declarations but defined in none of the units, with every declaration that uses it. `name` is the first spelling seen (possibly namespace-qualified). */
+export interface UnresolvedType {
+  name: string
+  uses: UnresolvedTypeUse[]
+}
+
 export interface BuildOptions {
   caseSensitive?: boolean
 }
@@ -276,6 +290,35 @@ export class SymbolTable implements TypeResolver {
   /** @internal */
   addAlias(info: AliasTypeInfo): void {
     this.aliases.set(this.key(info.typeName), info)
+  }
+
+  /** Named types used by variable declarations that no unit defines (not a POU, enum, struct or alias, also not by the last segment of a qualified name), grouped case-folded, in declaration order. Host-provided types (FB stubs) are not known here; the caller filters them. */
+  unresolvedTypes(): UnresolvedType[] {
+    const found = new Map<string, UnresolvedType>()
+    const visit = (pou: Pou, method: Method | undefined, blocks: VarBlock[]): void => {
+      for (const block of blocks) {
+        for (const entry of block.vars) {
+          const typeNode = entry.typeNode
+          if (typeNode.type !== 'identifier' && typeNode.type !== 'qualified_identifier') continue
+          const name = typeNode.text
+          if (this.isDefined(name) || this.isDefined(name.slice(name.lastIndexOf('.') + 1))) continue
+          const k = this.key(name)
+          const existing = found.get(k)
+          if (existing === undefined) found.set(k, { name, uses: [{ pou, method, entry }] })
+          else existing.uses.push({ pou, method, entry })
+        }
+      }
+    }
+    for (const pou of this.pous.values()) {
+      visit(pou, undefined, pou.varBlocks)
+      for (const method of pou.methods) visit(pou, method, method.varBlocks)
+    }
+    return [...found.values()]
+  }
+
+  private isDefined(name: string): boolean {
+    const k = this.key(name)
+    return this.pous.has(k) || this.enums.has(k) || this.structs.has(k) || this.aliases.has(k)
   }
 
   /** @internal True if `name` names a collected FUNCTION_BLOCK. */
