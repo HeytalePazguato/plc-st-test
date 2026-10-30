@@ -1,0 +1,34 @@
+{
+  "name": "@plc-st/ingestor-generic",
+  "version": "0.0.0",
+  "description": "Ingestor plugin for plc-st-test.",
+  "type": "module",
+  "license": "MIT",
+  "author": "HeytalePazguato",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HeytalePazguato/plc-st-test.git",
+    "directory": "packages/ingestors/generic"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@plc-st/plugin-api": "workspace:^",
+    "@plc-st/project-model": "workspace:^"
+  }
+}

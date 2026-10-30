@@ -1,0 +1,39 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../plugin-api"
+    },
+    {
+      "path": "../project-model"
+    },
+    {
+      "path": "../ingestors/generic"
+    },
+    {
+      "path": "../ingestors/twincat"
+    },
+    {
+      "path": "../ingestors/br"
+    },
+    {
+      "path": "../dialects/standard"
+    },
+    {
+      "path": "../dialects/twincat"
+    },
+    {
+      "path": "../dialects/br"
+    }
+  ]
+}

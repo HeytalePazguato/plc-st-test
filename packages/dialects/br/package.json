@@ -1,0 +1,36 @@
+{
+  "name": "@plc-st/dialect-br",
+  "version": "0.0.0",
+  "description": "Dialect plugin for plc-st-test.",
+  "type": "module",
+  "license": "MIT",
+  "author": "HeytalePazguato",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HeytalePazguato/plc-st-test.git",
+    "directory": "packages/dialects/br"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@plc-st/plugin-api": "workspace:^"
+  },
+  "devDependencies": {
+    "@plc-st/plugin-api": "workspace:^"
+  }
+}

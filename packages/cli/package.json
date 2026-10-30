@@ -1,0 +1,48 @@
+{
+  "name": "plc-st-test",
+  "version": "0.0.0",
+  "description": "Unit test runner for IEC 61131-3 Structured Text. No PLC runtime, no license, no Windows required.",
+  "type": "module",
+  "license": "MIT",
+  "author": "HeytalePazguato",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HeytalePazguato/plc-st-test.git",
+    "directory": "packages/cli"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "plc-st-test": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@plc-st/core": "workspace:*",
+    "@plc-st/dialect-br": "workspace:*",
+    "@plc-st/dialect-standard": "workspace:*",
+    "@plc-st/dialect-twincat": "workspace:*",
+    "@plc-st/ingestor-br": "workspace:*",
+    "@plc-st/ingestor-generic": "workspace:*",
+    "@plc-st/ingestor-twincat": "workspace:*",
+    "@plc-st/plugin-api": "workspace:*",
+    "@plc-st/project-model": "workspace:*",
+    "commander": "^15",
+    "tinyglobby": "~0.2.17",
+    "yaml": "^2.9",
+    "zod": "^4.6"
+  }
+}

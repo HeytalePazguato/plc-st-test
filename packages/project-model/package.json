@@ -1,0 +1,30 @@
+{
+  "name": "@plc-st/project-model",
+  "version": "0.0.0",
+  "description": "Vendor-neutral project model, source maps, and confined filesystem helpers for plc-st-test.",
+  "type": "module",
+  "license": "MIT",
+  "author": "HeytalePazguato",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HeytalePazguato/plc-st-test.git",
+    "directory": "packages/project-model"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

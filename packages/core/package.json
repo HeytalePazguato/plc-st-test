@@ -28,6 +28,8 @@
     "access": "public"
   },
   "dependencies": {
+    "@plc-st/plugin-api": "workspace:^",
+    "@plc-st/project-model": "workspace:^",
     "tree-sitter-iec61131-3-st": "~0.1.2",
     "web-tree-sitter": "~0.27.1"
   }

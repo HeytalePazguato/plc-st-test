@@ -1,4 +1,35 @@
 {
   "files": [],
-  "references": [{ "path": "packages/core" }]
+  "references": [
+    {
+      "path": "packages/project-model"
+    },
+    {
+      "path": "packages/plugin-api"
+    },
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/ingestors/generic"
+    },
+    {
+      "path": "packages/ingestors/twincat"
+    },
+    {
+      "path": "packages/ingestors/br"
+    },
+    {
+      "path": "packages/dialects/standard"
+    },
+    {
+      "path": "packages/dialects/twincat"
+    },
+    {
+      "path": "packages/dialects/br"
+    },
+    {
+      "path": "packages/cli"
+    }
+  ]
 }

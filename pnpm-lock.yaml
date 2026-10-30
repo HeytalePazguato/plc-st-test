@@ -27,14 +27,115 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.0))
 
+  packages/cli:
+    dependencies:
+      '@plc-st/core':
+        specifier: workspace:*
+        version: link:../core
+      '@plc-st/dialect-br':
+        specifier: workspace:*
+        version: link:../dialects/br
+      '@plc-st/dialect-standard':
+        specifier: workspace:*
+        version: link:../dialects/standard
+      '@plc-st/dialect-twincat':
+        specifier: workspace:*
+        version: link:../dialects/twincat
+      '@plc-st/ingestor-br':
+        specifier: workspace:*
+        version: link:../ingestors/br
+      '@plc-st/ingestor-generic':
+        specifier: workspace:*
+        version: link:../ingestors/generic
+      '@plc-st/ingestor-twincat':
+        specifier: workspace:*
+        version: link:../ingestors/twincat
+      '@plc-st/plugin-api':
+        specifier: workspace:*
+        version: link:../plugin-api
+      '@plc-st/project-model':
+        specifier: workspace:*
+        version: link:../project-model
+      commander:
+        specifier: ^15
+        version: 15.0.0
+      tinyglobby:
+        specifier: ~0.2.17
+        version: 0.2.17
+      yaml:
+        specifier: ^2.9
+        version: 2.9.0
+      zod:
+        specifier: ^4.6
+        version: 4.6.7
+
   packages/core:
     dependencies:
+      '@plc-st/plugin-api':
+        specifier: workspace:^
+        version: link:../plugin-api
+      '@plc-st/project-model':
+        specifier: workspace:^
+        version: link:../project-model
       tree-sitter-iec61131-3-st:
         specifier: ~0.1.2
         version: 0.1.2
       web-tree-sitter:
         specifier: ~0.27.1
         version: 0.27.1
+
+  packages/dialects/br:
+    devDependencies:
+      '@plc-st/plugin-api':
+        specifier: workspace:^
+        version: link:../../plugin-api
+
+  packages/dialects/standard:
+    devDependencies:
+      '@plc-st/plugin-api':
+        specifier: workspace:^
+        version: link:../../plugin-api
+
+  packages/dialects/twincat:
+    devDependencies:
+      '@plc-st/plugin-api':
+        specifier: workspace:^
+        version: link:../../plugin-api
+
+  packages/ingestors/br:
+    dependencies:
+      '@plc-st/plugin-api':
+        specifier: workspace:^
+        version: link:../../plugin-api
+      '@plc-st/project-model':
+        specifier: workspace:^
+        version: link:../../project-model
+
+  packages/ingestors/generic:
+    dependencies:
+      '@plc-st/plugin-api':
+        specifier: workspace:^
+        version: link:../../plugin-api
+      '@plc-st/project-model':
+        specifier: workspace:^
+        version: link:../../project-model
+
+  packages/ingestors/twincat:
+    dependencies:
+      '@plc-st/plugin-api':
+        specifier: workspace:^
+        version: link:../../plugin-api
+      '@plc-st/project-model':
+        specifier: workspace:^
+        version: link:../../project-model
+
+  packages/plugin-api:
+    dependencies:
+      '@plc-st/project-model':
+        specifier: workspace:^
+        version: link:../project-model
+
+  packages/project-model: {}
 
 packages:
 
@@ -349,6 +450,10 @@ packages:
   chai@6.3.0:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
     engines: {node: '>=18'}
+
+  commander@15.0.0:
+    resolution: {integrity: sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg==}
+    engines: {node: '>=22.12.0'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -858,6 +963,9 @@ packages:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
 
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
 snapshots:
 
   '@cacheable/memory@2.2.0':
@@ -1139,6 +1247,8 @@ snapshots:
       qified: 0.10.1
 
   chai@6.3.0: {}
+
+  commander@15.0.0: {}
 
   cross-spawn@7.0.6:
     dependencies:
@@ -1538,7 +1648,8 @@ snapshots:
 
   word-wrap@1.2.5: {}
 
-  yaml@2.9.0:
-    optional: true
+  yaml@2.9.0: {}
 
   yocto-queue@0.1.0: {}
+
+  zod@4.6.7: {}
