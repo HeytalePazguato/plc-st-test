@@ -10,6 +10,7 @@ import { SimClock } from '../interpreter/clock.js'
 import { CycleEngine } from '../interpreter/cycle.js'
 import { createEvalContext, disposeFb, instantiateFb } from '../interpreter/pou.js'
 import { registerStdlib } from '../interpreter/stdlib/index.js'
+import { registerCycleFns } from './cyclefns.js'
 import type { Limits } from '../limits.js'
 import { Session } from '../session.js'
 import type { SymbolTable } from '../symbols/table.js'
@@ -28,12 +29,13 @@ export interface DefaultSessionOptions {
   limits?: Limits
 }
 
-/** A session factory registering the assertions (enum names resolved through the table) and the IEC standard library. */
+/** A session factory registering the assertions (enum names resolved through the table), the IEC standard library and RUN_CYCLES / RUN_UNTIL. */
 export function defaultSessionFactory(opts: DefaultSessionOptions): () => Session {
   return () => {
     const session = new Session({ caseSensitive: opts.table.isCaseSensitive, limits: opts.limits })
     registerAssertions(session, opts.table)
     registerStdlib(session)
+    registerCycleFns(session)
     return session
   }
 }

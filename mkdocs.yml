@@ -55,6 +55,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Running cycles: run-cycles.md
   - Plugin API: plugin-api.md
   - Ingestor contract: ingestor-contract.md
   - Results schema: results-schema.md
