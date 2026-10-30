@@ -94,6 +94,10 @@ importers:
         version: link:../../plugin-api
 
   packages/dialects/standard:
+    dependencies:
+      tree-sitter-iec61131-3-st:
+        specifier: ~0.1.2
+        version: 0.1.2
     devDependencies:
       '@plc-st/plugin-api':
         specifier: workspace:^

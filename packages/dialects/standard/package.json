@@ -27,6 +27,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "tree-sitter-iec61131-3-st": "~0.1.2"
+  },
   "peerDependencies": {
     "@plc-st/plugin-api": "workspace:^"
   },
