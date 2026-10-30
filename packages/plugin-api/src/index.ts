@@ -15,7 +15,7 @@ export type * from './strategy.js'
 export type * from './dialect.js'
 export type * from './simulator.js'
 export type * from './reporter.js'
-export type * from './results.js'
+export * from './results.js'
 
 /** The default export shape of a plugin package. */
 export interface PluginModule {

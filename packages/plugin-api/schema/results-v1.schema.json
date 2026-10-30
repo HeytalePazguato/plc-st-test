@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://plc-st.dev/schemas/results-v1.json",
+  "title": "plc-st-test run results v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "tool", "project", "startedAt", "durationMs", "summary", "suites", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vendor", "dialect", "name", "projectFile"],
+      "properties": {
+        "vendor": { "type": "string" },
+        "dialect": { "type": "string" },
+        "name": { "type": "string" },
+        "projectFile": { "type": "string" }
+      }
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "passed", "failed", "errored", "skipped"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "errored": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "suites": { "type": "array", "items": { "$ref": "#/$defs/suite" } },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "location": { "$ref": "#/$defs/location" }
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "col"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "col": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "location", "durationMs", "tests"],
+      "properties": {
+        "name": { "type": "string" },
+        "location": { "$ref": "#/$defs/location" },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "tests": { "type": "array", "items": { "$ref": "#/$defs/test" } }
+      }
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fullName", "status", "durationMs", "location"],
+      "properties": {
+        "name": { "type": "string" },
+        "fullName": { "type": "string" },
+        "status": { "enum": ["passed", "failed", "errored", "skipped"] },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "location": { "$ref": "#/$defs/location" },
+        "failure": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "message", "location"],
+          "properties": {
+            "kind": { "enum": ["assertion", "runtime", "timeout", "limit"] },
+            "message": { "type": "string" },
+            "expected": { "type": "string" },
+            "actual": { "type": "string" },
+            "location": { "$ref": "#/$defs/location" }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branchesTotal", "branchesHit", "pous"],
+      "properties": {
+        "branchesTotal": { "type": "integer", "minimum": 0 },
+        "branchesHit": { "type": "integer", "minimum": 0 },
+        "pous": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "file", "branchesTotal", "branchesHit", "missed"],
+            "properties": {
+              "name": { "type": "string" },
+              "file": { "type": "string" },
+              "branchesTotal": { "type": "integer", "minimum": 0 },
+              "branchesHit": { "type": "integer", "minimum": 0 },
+              "missed": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["line", "kind"],
+                  "properties": {
+                    "line": { "type": "integer", "minimum": 0 },
+                    "kind": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
