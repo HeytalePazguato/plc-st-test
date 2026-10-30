@@ -8,12 +8,13 @@ import { STRING_FNS } from './strings.js'
 import { MATH_FNS } from './math.js'
 import { SELECTION_FNS } from './selection.js'
 import { CONVERSION_FNS } from './conversion.js'
+import { BITSHIFT_FNS } from './bitshift.js'
 
 /** The stdlib function-block modules, each contributing its FB stubs. */
 const FB_MODULES: readonly (readonly FbStubDef[])[] = [COUNTER_STUBS, EDGE_STUBS, BISTABLE_STUBS, TIMER_STUBS]
 
 /** The stdlib function modules, each contributing host functions. */
-const FN_MODULES: readonly (readonly HostFnDef[])[] = [STRING_FNS, MATH_FNS, SELECTION_FNS, CONVERSION_FNS]
+const FN_MODULES: readonly (readonly HostFnDef[])[] = [STRING_FNS, MATH_FNS, SELECTION_FNS, CONVERSION_FNS, BITSHIFT_FNS]
 
 /** Registers every standard library module into `session` (source `stdlib`; a user POU of the same name still takes precedence for FBs). */
 export function registerStdlib(session: Session): void {

@@ -208,6 +208,30 @@ describe('selection functions', () => {
   })
 })
 
+describe('bit-shift functions', () => {
+  const s = session()
+
+  it('SHL and SHR shift in zeros within the width', () => {
+    expect(scalar(call(s, 'SHL', pos(v('BYTE', 0b1000_0001), v('INT', 1))))).toEqual({ type: 'BYTE', value: 0b0000_0010 })
+    expect(scalar(call(s, 'SHR', pos(v('WORD', 0x8000), v('INT', 15))))).toEqual({ type: 'WORD', value: 1 })
+    expect(scalar(call(s, 'SHL', pos(v('BYTE', 0xff), v('INT', 8))))).toEqual({ type: 'BYTE', value: 0 })
+    expect(scalar(call(s, 'SHL', pos(v('LWORD', 1n), v('INT', 63))))).toEqual({ type: 'LWORD', value: 2n ** 63n })
+  })
+
+  it('ROL and ROR rotate modulo the width', () => {
+    expect(scalar(call(s, 'ROL', pos(v('BYTE', 0b1000_0001), v('INT', 1))))).toEqual({ type: 'BYTE', value: 0b0000_0011 })
+    expect(scalar(call(s, 'ROR', pos(v('BYTE', 0b0000_0011), v('INT', 1))))).toEqual({ type: 'BYTE', value: 0b1000_0001 })
+    expect(scalar(call(s, 'ROL', pos(v('DWORD', 0x8000_0000), v('INT', 33))))).toEqual({ type: 'DWORD', value: 1 })
+  })
+
+  it('works on the bit pattern of signed integers and rejects bad arguments', () => {
+    expect(scalar(call(s, 'SHL', pos(v('SINT', 64), v('INT', 1))))).toEqual({ type: 'SINT', value: -128 })
+    expect(scalar(call(s, 'SHR', pos(v('SINT', -128), v('INT', 7))))).toEqual({ type: 'SINT', value: 1 })
+    expect(() => call(s, 'SHL', pos(v('BYTE', 1), v('INT', -1)))).toThrow(/must not be negative/)
+    expect(() => call(s, 'SHL', pos(v('REAL', 1), v('INT', 1)))).toThrow(/bit string or integer/)
+  })
+})
+
 describe('conversion functions', () => {
   const s = session()
 
