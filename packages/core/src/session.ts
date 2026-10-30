@@ -6,6 +6,9 @@
 import type { FbStubDef, HostFnDef, NodeHandler } from '@plc-st/plugin-api'
 import type { OriginalLocation, ProjectWarning } from '@plc-st/project-model'
 import { IecLimitError } from './errors.js'
+import type { EvalContext } from './interpreter/context.js'
+import type { CycleEngine } from './interpreter/cycle.js'
+import type { FbInstance } from './interpreter/pou.js'
 import { DEFAULT_LIMITS, type Limits } from './limits.js'
 
 /** Receives a hit for each covered statement/branch id. */
@@ -63,6 +66,13 @@ export interface SessionOptions {
   caseSensitive: boolean
 }
 
+/** What the running test exposes to host functions such as RUN_CYCLES / RUN_UNTIL: the test's own cycle engine, its suite instance and an eval context whose `self` is that suite. Set by the isolation runner for each test. */
+export interface TestRuntime {
+  engine: CycleEngine
+  suite: FbInstance
+  ctx: EvalContext
+}
+
 /** Called by the cycle engine with the number of the cycle being run. */
 export type SessionHook = (cycle: number) => void
 
@@ -76,6 +86,8 @@ export class Session {
   readonly preCycle: SessionHook[] = []
   readonly postCycle: SessionHook[] = []
   coverage?: CoverageSink
+  /** The currently running test's engine, suite and context; undefined outside a test. */
+  runtime?: TestRuntime
   readonly mocks: MockStore = new EmptyMockStore()
   /** Scalar slots allocated by the current test so far (see `limits.maxAllocatedElements`). */
   allocation = 0
