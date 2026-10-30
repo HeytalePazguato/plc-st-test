@@ -49,6 +49,8 @@ export interface EnumTypeInfo {
   kind: 'enum'
   typeName: string
   members: { name: string; value: number }[]
+  /** The type-level default (`TYPE E : (A, B) := B; END_TYPE`); variables of the type start there instead of at the first enumerator. */
+  initNode?: Node
 }
 
 export interface AliasTypeInfo {

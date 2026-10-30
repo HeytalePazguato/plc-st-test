@@ -532,7 +532,7 @@ function collectTypeDeclaration(node: Node, table: SymbolTable): void {
     const typeName = nameNode.text
 
     if (defn.type === 'enumerated_type_inline') {
-      table.addEnum({ kind: 'enum', typeName, members: collectEnum(defn) })
+      table.addEnum({ kind: 'enum', typeName, members: collectEnum(defn), initNode: def.childForFieldName('default') ?? undefined })
     } else if (defn.type === 'structure_type_inline') {
       table.addStruct({
         kind: 'struct',

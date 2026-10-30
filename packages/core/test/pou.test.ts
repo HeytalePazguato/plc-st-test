@@ -10,7 +10,7 @@ import type { EvalContext } from '../src/interpreter/context.js'
 import { HOSTFN_SHADOWS_POU, callInstance, callPou, createEvalContext, disposeFb, fbInstanceOf, instantiateFb, type FbInstance } from '../src/interpreter/pou.js'
 import { Session } from '../src/session.js'
 import { DEFAULT_LIMITS, type Limits } from '../src/limits.js'
-import { IecRuntimeError } from '../src/errors.js'
+import { IecLimitError } from '../src/errors.js'
 
 let lang: Language
 
@@ -244,7 +244,7 @@ describe('POU dispatch', () => {
       ok.scan()
       expect(js(ok.main, 'n')).toBe(5)
       const deep = load(['n : INT;'], ['n := F_Rec(50);'], { limits: { maxRecursionDepth: 10 } })
-      expect(deep.scan).toThrow(IecRuntimeError)
+      expect(deep.scan).toThrow(IecLimitError)
       expect(deep.scan).toThrow(/maximum of 10 \(limits\.maxRecursionDepth\) calling 'F_Rec'/)
     })
 

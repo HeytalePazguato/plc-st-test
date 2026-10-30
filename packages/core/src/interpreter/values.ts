@@ -448,7 +448,8 @@ function namedDefault(name: string, initNode: Node | undefined, env: InitEnv): I
   return buildDefault(resolved.typeNode, initNode ?? resolved.initNode, env)
 }
 
-function enumDefaultValue(resolved: EnumTypeInfo, initNode: Node | undefined, env: InitEnv): number {
+function enumDefaultValue(resolved: EnumTypeInfo, varInit: Node | undefined, env: InitEnv): number {
+  const initNode = varInit ?? resolved.initNode
   if (initNode === undefined) return resolved.members.length > 0 ? resolved.members[0].value : 0
   const v = evaluateConstant(initNode, resolved.typeName, env, env.constEval)
   if (v.kind === 'enum') return v.value

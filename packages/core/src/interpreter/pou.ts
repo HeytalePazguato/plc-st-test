@@ -244,11 +244,11 @@ function hostContext(ctx: EvalContext, node: Node | undefined): HostCallContext 
   }
 }
 
-/** Enter a POU activation: the callee's depth, or a located error when it exceeds `limits.maxRecursionDepth`. */
+/** Enter a POU activation: the callee's depth, or a located `IecLimitError` (the test errors with kind `limit`) when it exceeds `limits.maxRecursionDepth`. */
 function enter(ctx: EvalContext, node: Node | undefined, what: string): number {
   const depth = (ctx.depth ?? 0) + 1
   const max = ctx.limits.maxRecursionDepth
-  if (depth > max) throw error(ctx, node, `call depth exceeded the maximum of ${String(max)} (limits.maxRecursionDepth) calling '${what}'`)
+  if (depth > max) throw new IecLimitError(error(ctx, node, `call depth exceeded the maximum of ${String(max)} (limits.maxRecursionDepth) calling '${what}'`).message)
   return depth
 }
 
