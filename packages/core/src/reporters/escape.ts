@@ -15,3 +15,13 @@ const XML_INVALID = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]|[\uD800-\uDB
 export function escapeXml(text: string): string {
   return text.replace(XML_INVALID, '').replace(/[&<>"']/g, (c) => (c === "'" ? '&apos;' : (ENTITIES[c] ?? c)))
 }
+
+/** Escape `text` for the data part of a GitHub Actions workflow command (`::error ...::<data>`), so a message cannot end the command or start another one. */
+export function escapeWorkflowData(text: string): string {
+  return text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A')
+}
+
+/** Escape `text` for a property value of a GitHub Actions workflow command (`file=`, `title=`, ...). */
+export function escapeWorkflowProperty(text: string): string {
+  return escapeWorkflowData(text).replace(/:/g, '%3A').replace(/,/g, '%2C')
+}
