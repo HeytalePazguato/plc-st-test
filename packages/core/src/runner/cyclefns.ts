@@ -5,7 +5,7 @@ import type { CallArg, IecValue } from '@plc-st/plugin-api'
 import { IecRuntimeError } from '../errors.js'
 import type { Session, TestRuntime } from '../session.js'
 
-function runtimeOf(session: Session, name: string): TestRuntime {
+export function runtimeOf(session: Session, name: string): TestRuntime {
   if (session.runtime === undefined) throw new IecRuntimeError(`${name} can only be used inside a test`)
   return session.runtime
 }
@@ -18,9 +18,9 @@ function intArg(name: string, what: string, arg: CallArg): number {
   return Number(v.value)
 }
 
-function stringArg(name: string, arg: CallArg): string {
+export function stringArg(name: string, what: string, arg: CallArg): string {
   const v = arg.value
-  if (v.kind !== 'scalar' || (v.type !== 'STRING' && v.type !== 'WSTRING')) throw new IecRuntimeError(`${name}: expression must be a STRING`)
+  if (v.kind !== 'scalar' || (v.type !== 'STRING' && v.type !== 'WSTRING')) throw new IecRuntimeError(`${name}: ${what} must be a STRING`)
   return String(v.value)
 }
 
@@ -48,7 +48,7 @@ export function registerCycleFns(session: Session): void {
       maxArgs: 2,
       call(args) {
         const rt = runtimeOf(session, 'RUN_UNTIL')
-        const expr = stringArg('RUN_UNTIL', args[0])
+        const expr = stringArg('RUN_UNTIL', 'expression', args[0])
         const max = intArg('RUN_UNTIL', 'maxCycles', args[1])
         if (max < 0) throw new IecRuntimeError(`RUN_UNTIL: maxCycles must not be negative, got ${String(max)}`)
         return { kind: 'scalar', type: 'DINT', value: rt.engine.runUntil(expr, max, rt.suite, rt.ctx) }

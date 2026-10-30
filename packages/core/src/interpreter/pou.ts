@@ -84,20 +84,32 @@ export class FbInstance implements FbInstanceRef {
   readonly temps: readonly Temp[]
   /** @internal Set once `onDispose` has run. */
   disposed = false
+  private readonly nested: FbInstance[]
 
   constructor(
     readonly pou: Pou,
     frame: Frame,
     /** The instance's struct value; its fields are the instance's inputs, outputs and VARs. */
     readonly value: StructValue,
-    private readonly ctx: EvalContext,
+    protected readonly ctx: EvalContext,
     readonly stub?: { def: FbStubDef; state: unknown },
   ) {
     this.scope = frame.scope
     this.children = frame.children
+    this.nested = frame.children
     this.params = frame.params
     this.temps = frame.temps
     Object.defineProperty(value, INSTANCE, { value: this })
+  }
+
+  /** @internal When defined (on a mock), replaces the body of every call on this instance: `member` is the METHOD or ACTION called, or `undefined` for a call of the instance itself. Arguments are bound first and output bindings copied back afterwards, as for a real call. */
+  intercept?(member: string | undefined, args: Record<string, IecValue>): void
+
+  /** @internal Swap the nested instance stored in field `member` for `replacement`. The scope needs no update: its slots are live views over the field map. */
+  replaceMember(member: string, replacement: FbInstance): void {
+    const index = this.nested.findIndex((c) => c.value === this.value.fields.get(member))
+    if (index >= 0) this.nested[index] = replacement
+    this.value.fields.set(member, replacement.value)
   }
 
   get typeName(): string {
@@ -183,12 +195,14 @@ export function callPou(callee: string, args: CallArg[], ctx: EvalContext, node?
   }
 }
 
-/** Invoke an instance's body (or its stub's `call`) with `args`: bind inputs/in-outs, reset VAR_TEMP, run, copy output bindings back. Used for `fb(...)` and by the cycle engine for program instances. */
+/** Invoke an instance's body (or its stub's `call`, or its mock interception) with `args`: bind inputs/in-outs, reset VAR_TEMP, run, copy output bindings back. Used for `fb(...)` and by the cycle engine for program instances. */
 export function callInstance(inst: FbInstance, args: CallArg[], ctx: EvalContext, node?: Node): undefined {
   const depth = enter(ctx, node, inst.typeName)
   const locNode = node ?? inst.pou.bodyNode
   const outputs = bindArgs(inst.params, args, ctx, node, locNode, inst.typeName)
-  if (inst.stub !== undefined) {
+  if (inst.intercept !== undefined) {
+    inst.intercept(undefined, recordedArgs(inst.params))
+  } else if (inst.stub !== undefined) {
     inst.stub.def.call(inst.stub.state, fbIo(inst, ctx, locNode), hostContext(ctx, node))
   } else {
     const inner = instanceContext(inst, ctx, depth)
@@ -197,6 +211,23 @@ export function callInstance(inst: FbInstance, args: CallArg[], ctx: EvalContext
   }
   copyOutputs(outputs, ctx, locNode)
   return undefined
+}
+
+/** The frame and struct value of a mock twin of `inst`: only its declared inputs, in-outs and outputs (inherited ones included), at their declared defaults. Initializers still see `inst`'s own constants through its scope. */
+export function mockTwin(inst: FbInstance, ctx: EvalContext): { frame: Frame; value: StructValue } {
+  const depth = (ctx.depth ?? 0) + 1
+  const fields = new Map<string, IecValue>()
+  const initCtx: EvalContext = { ...ctx, globals: [inst.scope, ...(ctx.globals ?? [])] }
+  const frame =
+    inst.stub !== undefined
+      ? stubFrame(inst.stub.def, ctx, depth, fields)
+      : buildFrame(
+          instanceVars(inst.pou, ctx).filter((v) => v.kind === 'input' || v.kind === 'output' || v.kind === 'inout'),
+          initCtx,
+          depth,
+          fields,
+        )
+  return { frame, value: { kind: 'struct', typeName: inst.typeName, fields } }
 }
 
 /** Reinitialise every VAR_TEMP slot of `inst` and of its nested instances to the declared default (the cycle engine calls this at the end of each cycle). */
@@ -580,7 +611,7 @@ interface OutputBinding {
 }
 
 /** Store with the declared-type conversion of `storeValue` (located at `locNode`), or a plain copy when there is no node to locate errors with. */
-function store(slot: Slot, value: IecValue, ctx: EvalContext, locNode: Node | undefined): void {
+export function store(slot: Slot, value: IecValue, ctx: EvalContext, locNode: Node | undefined): void {
   if (locNode === undefined) slot.value = cloneValue(value)
   else storeValue(slot, value, locNode, ctx)
 }
@@ -619,6 +650,12 @@ function bindArgs(params: readonly Param[], args: CallArg[], ctx: EvalContext, n
 
 function copyOutputs(outputs: OutputBinding[], ctx: EvalContext, locNode: Node | undefined): void {
   for (const { from, to } of outputs) store(to, from.value, ctx, locNode)
+}
+
+/** Copies of the current input and bound in-out values by declared name. Inputs keep their value between calls, so this is what the callee would see, not just what the call site passed. */
+function recordedArgs(params: readonly Param[]): Record<string, IecValue> {
+  const bound = params.filter((p) => p.kind === 'input' || (p.kind === 'inout' && (p.slot as InOutSlot).target !== undefined))
+  return Object.fromEntries(bound.map((p) => [p.name, cloneValue(p.slot.value)]))
 }
 
 function bodyStatements(node: Node | undefined): Node[] {
@@ -695,7 +732,8 @@ function invokeMethod(inst: FbInstance, method: Method, args: CallArg[], ctx: Ev
   const result = declareResult(frame, method.name, method.returnTypeNode, ctx, depth)
   try {
     const outputs = bindArgs(frame.params, args, ctx, node, locNode, what)
-    runBody(bodyStatements(method.bodyNode), instanceContext(inst, ctx, depth, frame.scope), method.bodyNode)
+    if (inst.intercept !== undefined) inst.intercept(method.name, recordedArgs(frame.params))
+    else runBody(bodyStatements(method.bodyNode), instanceContext(inst, ctx, depth, frame.scope), method.bodyNode)
     copyOutputs(outputs, ctx, locNode)
   } finally {
     disposeAll(frame.children, ctx)
@@ -708,7 +746,8 @@ function invokeAction(inst: FbInstance, action: Action, args: CallArg[], ctx: Ev
   const what = `${inst.typeName}.${action.name}`
   if (args.length > 0) throw error(ctx, node, `action '${what}' takes no arguments`)
   const depth = enter(ctx, node, what)
-  runBody(action.bodyNodes, instanceContext(inst, ctx, depth), action.bodyNodes[0] as Node | undefined)
+  if (inst.intercept !== undefined) inst.intercept(action.name, {})
+  else runBody(action.bodyNodes, instanceContext(inst, ctx, depth), action.bodyNodes[0] as Node | undefined)
   return undefined
 }
 

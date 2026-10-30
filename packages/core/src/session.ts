@@ -3,8 +3,9 @@
  *
  * Everything that could be tempting to keep as a module-level mutable registry lives on a `Session` instead, so two sessions in one process (e.g. parallel test files, or an LSP serving several projects) never see each other's host functions, stubs or warnings.
  */
-import type { FbStubDef, HostFnDef, NodeHandler } from '@plc-st/plugin-api'
+import type { FbStubDef, HostFnDef, IecValue, NodeHandler } from '@plc-st/plugin-api'
 import type { OriginalLocation, ProjectWarning } from '@plc-st/project-model'
+import { caseKey } from './case.js'
 import { IecLimitError } from './errors.js'
 import type { EvalContext } from './interpreter/context.js'
 import type { CycleEngine } from './interpreter/cycle.js'
@@ -17,13 +18,33 @@ export interface CoverageSink {
   snapshot(): Map<string, number>
 }
 
-/** Minimal mock store; task 5.2 supplies the real behavior. */
-export interface MockStore {
-  clear(): void
+/** One recorded invocation of a mocked instance, method or action: the argument values by declared name and the cycle it happened in. */
+export interface MockCall {
+  args: Record<string, IecValue>
+  cycle: number
 }
 
-class EmptyMockStore implements MockStore {
-  clear(): void {}
+/** Recorded mock invocations by dotted path (`uut.fbClient`, `uut.fbClient.Connect`), keyed under the session's case mode. */
+export class MockStore {
+  private readonly records = new Map<string, MockCall[]>()
+
+  constructor(private readonly caseSensitive: boolean) {}
+
+  record(path: string, call: MockCall): void {
+    const key = caseKey(path, this.caseSensitive)
+    const calls = this.records.get(key)
+    if (calls === undefined) this.records.set(key, [call])
+    else calls.push(call)
+  }
+
+  /** The invocations recorded under `path`, oldest first. */
+  calls(path: string): readonly MockCall[] {
+    return this.records.get(caseKey(path, this.caseSensitive)) ?? []
+  }
+
+  clear(): void {
+    this.records.clear()
+  }
 }
 
 /** Name-keyed registry; later registrations replace earlier ones and report the collision through `onWarn`. */
@@ -88,7 +109,7 @@ export class Session {
   coverage?: CoverageSink
   /** The currently running test's engine, suite and context; undefined outside a test. */
   runtime?: TestRuntime
-  readonly mocks: MockStore = new EmptyMockStore()
+  readonly mocks: MockStore
   /** Scalar slots allocated by the current test so far (see `limits.maxAllocatedElements`). */
   allocation = 0
   /** Wall-clock deadline of the current test as a `Date.now()` timestamp; `Infinity` until `startDeadline` is called. */
@@ -97,6 +118,7 @@ export class Session {
   constructor({ limits = DEFAULT_LIMITS, caseSensitive }: SessionOptions) {
     this.limits = limits
     this.caseSensitive = caseSensitive
+    this.mocks = new MockStore(caseSensitive)
     const onWarn = (code: string, message: string): void => this.warn(code, message)
     this.hostFns = new Registry<HostFnDef>('host function', caseSensitive, onWarn)
     this.fbStubs = new Registry<FbStubDef>('function block stub', caseSensitive, onWarn)
