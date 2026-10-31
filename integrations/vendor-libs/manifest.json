@@ -59,7 +59,7 @@
       ],
       "returns": null,
       "vendorNotes": {
-        "twincat": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
+        "beckhoff": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
         "br": "Automation Studio has no ANY: provide one overload-style function per typed variant (ASSERT_EQUAL_<TYPE>) and use the typed variants in tests."
       }
     },
@@ -85,7 +85,7 @@
       ],
       "returns": null,
       "vendorNotes": {
-        "twincat": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
+        "beckhoff": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
         "br": "Automation Studio has no ANY: provide one overload-style function per typed variant (ASSERT_EQUAL_<TYPE>) and use the typed variants in tests."
       }
     },
@@ -116,7 +116,7 @@
       ],
       "returns": null,
       "vendorNotes": {
-        "twincat": "Declare the parameters as LREAL; REAL arguments widen implicitly.",
+        "beckhoff": "Declare the parameters as LREAL; REAL arguments widen implicitly.",
         "br": "Declare the parameters as LREAL; REAL arguments widen implicitly."
       }
     },
@@ -142,7 +142,7 @@
       ],
       "returns": null,
       "vendorNotes": {
-        "twincat": "Declare the parameters as ANY; the host compares bounds and elements.",
+        "beckhoff": "Declare the parameters as ANY; the host compares bounds and elements.",
         "br": "No variable-length array parameter exists; provide per-element-type overloads or a pointer + length variant."
       }
     },
@@ -1128,7 +1128,7 @@
       ],
       "returns": null,
       "vendorNotes": {
-        "twincat": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
+        "beckhoff": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
         "br": "Automation Studio has no ANY: provide one overload-style function per typed variant (ASSERT_EQUAL_<TYPE>) and use the typed variants in tests."
       }
     },
@@ -1171,7 +1171,7 @@
       ],
       "returns": null,
       "vendorNotes": {
-        "twincat": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
+        "beckhoff": "Declare the parameters as ANY and read them through the typed ANY accessors; the typed variants (ASSERT_EQUAL_<TYPE>) are also provided for call sites that want a compile-time type check.",
         "br": "Automation Studio has no ANY: provide one overload-style function per typed variant (ASSERT_EQUAL_<TYPE>) and use the typed variants in tests."
       }
     },
@@ -1205,7 +1205,7 @@
       "parameters": [],
       "returns": "ANY",
       "vendorNotes": {
-        "twincat": "The return type depends on the table; declare it as ANY or generate one accessor per row struct type.",
+        "beckhoff": "The return type depends on the table; declare it as ANY or generate one accessor per row struct type.",
         "br": "No ANY return type exists; use a per-struct accessor or read the table directly."
       }
     }

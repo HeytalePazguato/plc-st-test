@@ -62,8 +62,8 @@ const importRe = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"]([^'"]+)[
 describe('dependency boundaries', () => {
   it('discovers all ten packages', () => {
     expect(packages.map((p) => p.name).sort()).toEqual([
-      '@plc-st/core', '@plc-st/dialect-br', '@plc-st/dialect-standard', '@plc-st/dialect-twincat',
-      '@plc-st/ingestor-br', '@plc-st/ingestor-generic', '@plc-st/ingestor-twincat',
+      '@plc-st/core', '@plc-st/dialect-beckhoff', '@plc-st/dialect-br', '@plc-st/dialect-standard',
+      '@plc-st/ingestor-beckhoff', '@plc-st/ingestor-br', '@plc-st/ingestor-generic',
       '@plc-st/plugin-api', '@plc-st/project-model', 'plc-st-test',
     ])
   })

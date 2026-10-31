@@ -1,5 +1,5 @@
 {
-  "name": "@plc-st/ingestor-twincat",
+  "name": "@plc-st/ingestor-beckhoff",
   "version": "0.0.0",
   "description": "Ingestor plugin for plc-st-test.",
   "type": "module",
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HeytalePazguato/plc-st-test.git",
-    "directory": "packages/ingestors/twincat"
+    "directory": "packages/ingestors/beckhoff"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

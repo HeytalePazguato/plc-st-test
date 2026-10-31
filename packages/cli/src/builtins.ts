@@ -1,7 +1,7 @@
 /**
  * What the published CLI ships with, imported statically so it works with zero plugins installed.
  *
- * Only the packages with a default `PluginModule` are listed. `@plc-st/ingestor-twincat`, `@plc-st/ingestor-br`, `@plc-st/dialect-twincat` and `@plc-st/dialect-br` are still empty; each is added to `BUILTIN_MODULES` when it gains one.
+ * Only the packages with a default `PluginModule` are listed. `@plc-st/ingestor-beckhoff`, `@plc-st/ingestor-br`, `@plc-st/dialect-beckhoff` and `@plc-st/dialect-br` are still empty; each is added to `BUILTIN_MODULES` when it gains one.
  */
 
 import { githubReporter, jsonReporter, junitReporter, tapReporter, terminalReporter } from '@plc-st/core'

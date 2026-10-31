@@ -51,7 +51,7 @@ function unit(id: string, text: string): SourceUnit {
 }
 
 function load(text: string, typeName: string, limits: Partial<Limits> = {}) {
-  const project: Project = { vendor: 'twincat', dialect: 'twincat', name: 'F', root: '/f', projectFile: '/f/F.plcproj', units: [unit('U', text)], libraries: [], defines: {}, warnings: [] }
+  const project: Project = { vendor: 'beckhoff', dialect: 'beckhoff', name: 'F', root: '/f', projectFile: '/f/F.plcproj', units: [unit('U', text)], libraries: [], defines: {}, warnings: [] }
   const symbols = buildSymbolTableFromProject(project, lang, { caseSensitive: false })
   expect(symbols.diagnostics).toEqual([])
   const session = new Session({ caseSensitive: false, limits: { ...DEFAULT_LIMITS, ...limits } })

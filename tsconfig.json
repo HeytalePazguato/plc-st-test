@@ -14,7 +14,7 @@
       "path": "packages/ingestors/generic"
     },
     {
-      "path": "packages/ingestors/twincat"
+      "path": "packages/ingestors/beckhoff"
     },
     {
       "path": "packages/ingestors/br"
@@ -23,7 +23,7 @@
       "path": "packages/dialects/standard"
     },
     {
-      "path": "packages/dialects/twincat"
+      "path": "packages/dialects/beckhoff"
     },
     {
       "path": "packages/dialects/br"

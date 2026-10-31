@@ -17,8 +17,8 @@ describe('Project model types', () => {
       name: 'Reset',
     }
     const project = {
-      vendor: 'twincat',
-      dialect: 'twincat',
+      vendor: 'beckhoff',
+      dialect: 'beckhoff',
       name: 'Demo',
       root: '/proj',
       projectFile: 'Demo.plcproj',

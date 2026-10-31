@@ -98,13 +98,13 @@ const fs = {
   list: async () => ['Plc.plcproj'],
 } satisfies SafeFsLike
 
-const candidate = { ingestorId: 'twincat', projectFile: 'Plc.plcproj', label: 'Plc', confidence: 0.9 } satisfies DetectCandidate
+const candidate = { ingestorId: 'beckhoff', projectFile: 'Plc.plcproj', label: 'Plc', confidence: 0.9 } satisfies DetectCandidate
 
 const ingestOptions = { root: '/repo', fs, testsFolder: 'Tests', testPattern: 'TEST_*', defines: {} } satisfies IngestOptions
 
 const ingestor = {
-  id: 'twincat',
-  vendor: 'twincat',
+  id: 'beckhoff',
+  vendor: 'beckhoff',
   apiVersion: PLUGIN_API_VERSION,
   detect: async () => [candidate],
   load: async (): Promise<Project> => {
@@ -129,9 +129,9 @@ const hooks = {
 } satisfies DialectHooks
 
 const dialect = {
-  id: 'twincat',
+  id: 'beckhoff',
   apiVersion: PLUGIN_API_VERSION,
-  grammarWasmPath: () => '/grammars/twincat.wasm',
+  grammarWasmPath: () => '/grammars/beckhoff.wasm',
   caseSensitive: false,
   testStrategy: strategy,
   nodeHandlers: { pointer_deref: handler },

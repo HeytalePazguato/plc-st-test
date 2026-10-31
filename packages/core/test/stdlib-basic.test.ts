@@ -71,7 +71,7 @@ const bool = (value: boolean): IecValue => ({ kind: 'scalar', type: IecType.BOOL
 const int = (value: number): IecValue => ({ kind: 'scalar', type: IecType.INT, value })
 
 function rig(): Rig {
-  const project: Project = { vendor: 'twincat', dialect: 'twincat', name: 'Fixture', root: '/fixture', projectFile: '/fixture/Fixture.plcproj', units: [unit('FB_Harness', HARNESS)], libraries: [], defines: {}, warnings: [] }
+  const project: Project = { vendor: 'beckhoff', dialect: 'beckhoff', name: 'Fixture', root: '/fixture', projectFile: '/fixture/Fixture.plcproj', units: [unit('FB_Harness', HARNESS)], libraries: [], defines: {}, warnings: [] }
   const symbols = buildSymbolTableFromProject(project, lang, { caseSensitive: false })
   expect(symbols.diagnostics).toEqual([])
   const session = new Session({ caseSensitive: false })

@@ -80,7 +80,7 @@ END_FUNCTION_BLOCK
 function setup(): { run: (method: string) => void; session: Session } {
   const lines = ST.split('\n').length
   const unit: SourceUnit = { id: 'TEST_Asserts', role: 'pou', isTest: true, text: ST, map: SourceMap.fromJSON([{ genStartLine: 1, lineCount: lines, file: 'TEST_Asserts.TcPOU', origStartLine: 1, origStartCol: 1 }]) }
-  const project: Project = { vendor: 'twincat', dialect: 'twincat', name: 'F', root: '/f', projectFile: '/f/F.plcproj', units: [unit], libraries: [], defines: {}, warnings: [] }
+  const project: Project = { vendor: 'beckhoff', dialect: 'beckhoff', name: 'F', root: '/f', projectFile: '/f/F.plcproj', units: [unit], libraries: [], defines: {}, warnings: [] }
   const symbols = buildSymbolTableFromProject(project, lang, { caseSensitive: false })
   expect(symbols.diagnostics).toEqual([])
   const session = new Session({ caseSensitive: false })

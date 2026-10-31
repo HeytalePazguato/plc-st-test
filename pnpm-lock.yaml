@@ -35,24 +35,24 @@ importers:
       '@plc-st/core':
         specifier: workspace:*
         version: link:../core
+      '@plc-st/dialect-beckhoff':
+        specifier: workspace:*
+        version: link:../dialects/beckhoff
       '@plc-st/dialect-br':
         specifier: workspace:*
         version: link:../dialects/br
       '@plc-st/dialect-standard':
         specifier: workspace:*
         version: link:../dialects/standard
-      '@plc-st/dialect-twincat':
+      '@plc-st/ingestor-beckhoff':
         specifier: workspace:*
-        version: link:../dialects/twincat
+        version: link:../ingestors/beckhoff
       '@plc-st/ingestor-br':
         specifier: workspace:*
         version: link:../ingestors/br
       '@plc-st/ingestor-generic':
         specifier: workspace:*
         version: link:../ingestors/generic
-      '@plc-st/ingestor-twincat':
-        specifier: workspace:*
-        version: link:../ingestors/twincat
       '@plc-st/plugin-api':
         specifier: workspace:*
         version: link:../plugin-api
@@ -90,6 +90,12 @@ importers:
         specifier: ~0.27.1
         version: 0.27.1
 
+  packages/dialects/beckhoff:
+    devDependencies:
+      '@plc-st/plugin-api':
+        specifier: workspace:^
+        version: link:../../plugin-api
+
   packages/dialects/br:
     devDependencies:
       '@plc-st/plugin-api':
@@ -106,11 +112,14 @@ importers:
         specifier: workspace:^
         version: link:../../plugin-api
 
-  packages/dialects/twincat:
-    devDependencies:
+  packages/ingestors/beckhoff:
+    dependencies:
       '@plc-st/plugin-api':
         specifier: workspace:^
         version: link:../../plugin-api
+      '@plc-st/project-model':
+        specifier: workspace:^
+        version: link:../../project-model
 
   packages/ingestors/br:
     dependencies:
@@ -132,15 +141,6 @@ importers:
       tinyglobby:
         specifier: 0.2.17
         version: 0.2.17
-
-  packages/ingestors/twincat:
-    dependencies:
-      '@plc-st/plugin-api':
-        specifier: workspace:^
-        version: link:../../plugin-api
-      '@plc-st/project-model':
-        specifier: workspace:^
-        version: link:../../project-model
 
   packages/plugin-api:
     dependencies:

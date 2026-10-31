@@ -25,7 +25,7 @@ function unit(id: string, text: string): SourceUnit {
 }
 
 function table(source: string): SymbolTable {
-  const project: Project = { vendor: 'twincat', dialect: 'twincat', name: 'Fixture', root: '/fixture', projectFile: '/fixture/Fixture.plcproj', units: [unit('oop', source)], libraries: [], defines: {}, warnings: [] }
+  const project: Project = { vendor: 'beckhoff', dialect: 'beckhoff', name: 'Fixture', root: '/fixture', projectFile: '/fixture/Fixture.plcproj', units: [unit('oop', source)], libraries: [], defines: {}, warnings: [] }
   return buildSymbolTableFromProject(project, lang, { caseSensitive: false })
 }
 

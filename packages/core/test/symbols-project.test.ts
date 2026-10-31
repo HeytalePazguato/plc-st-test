@@ -9,8 +9,8 @@ let lang: Language
 
 function project(units: SourceUnit[]): Project {
   return {
-    vendor: 'twincat',
-    dialect: 'twincat',
+    vendor: 'beckhoff',
+    dialect: 'beckhoff',
     name: 'Fixture',
     root: '/fixture',
     projectFile: '/fixture/Fixture.plcproj',

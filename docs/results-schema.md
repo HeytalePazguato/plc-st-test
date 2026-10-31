@@ -29,7 +29,7 @@ Note that the JSON Schema for v1 sets `additionalProperties: false` at every lev
 
 ### `project`
 
-- `vendor: string`, for example `standard`, `twincat`, or `br`.
+- `vendor: string`, for example `standard`, `beckhoff`, or `br`.
 - `dialect: string`
 - `name: string`
 - `projectFile: string`

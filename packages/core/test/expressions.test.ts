@@ -43,8 +43,8 @@ function prepare(expr: string, env: Env = {}): Prepared {
   const text = lines.join('\n')
   const stmtIndex = lines.length - 2
   const project: Project = {
-    vendor: 'twincat',
-    dialect: 'twincat',
+    vendor: 'beckhoff',
+    dialect: 'beckhoff',
     name: 'Fixture',
     root: '/fixture',
     projectFile: '/fixture/Fixture.plcproj',

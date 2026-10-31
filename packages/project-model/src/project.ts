@@ -1,6 +1,6 @@
 import type { OriginalLocation, SourceMap } from './sourcemap.js'
 
-export type Vendor = 'standard' | 'twincat' | 'br' | (string & {})
+export type Vendor = 'standard' | 'beckhoff' | 'br' | (string & {})
 
 export type UnitRole = 'pou' | 'types' | 'globals' | 'action'
 

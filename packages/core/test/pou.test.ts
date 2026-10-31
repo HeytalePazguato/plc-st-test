@@ -141,7 +141,7 @@ function load(decls: string[], body: string[], env: Env = {}): Loaded {
   const main = ['PROGRAM Main', 'VAR', ...decls, 'END_VAR', ...body, 'END_PROGRAM'].join('\n')
   const units = [unit('FB_Counter', 'pou', COUNTER), unit('Functions', 'pou', FUNCTIONS), unit('Main', 'pou', main)]
   for (const a of env.actions ?? []) units.push(unit(`${a.owner}.${a.name}`, 'action', a.body.join('\n'), { owner: a.owner, name: a.name }))
-  const project: Project = { vendor: 'twincat', dialect: 'twincat', name: 'Fixture', root: '/fixture', projectFile: '/fixture/Fixture.plcproj', units, libraries: [], defines: {}, warnings: [] }
+  const project: Project = { vendor: 'beckhoff', dialect: 'beckhoff', name: 'Fixture', root: '/fixture', projectFile: '/fixture/Fixture.plcproj', units, libraries: [], defines: {}, warnings: [] }
   const symbols = buildSymbolTableFromProject(project, lang, { caseSensitive: false })
   expect(symbols.diagnostics).toEqual([])
   const session = new Session({ caseSensitive: false, limits: { ...DEFAULT_LIMITS, ...env.limits } })

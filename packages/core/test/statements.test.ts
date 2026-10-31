@@ -43,8 +43,8 @@ function prepare(body: string[], env: Env = {}): Omit<Run, 'signal'> {
   const head = [...(env.types ?? []), 'PROGRAM Main', 'VAR', ...(env.decls ?? []), 'END_VAR']
   const lines = [...head, ...body, 'END_PROGRAM']
   const project: Project = {
-    vendor: 'twincat',
-    dialect: 'twincat',
+    vendor: 'beckhoff',
+    dialect: 'beckhoff',
     name: 'Fixture',
     root: '/fixture',
     projectFile: '/fixture/Fixture.plcproj',

@@ -77,7 +77,7 @@ END_FUNCTION_BLOCK
 function runSt(): FbInstance {
   const lines = ST.split('\n').length
   const unit: SourceUnit = { id: 'TEST_Fns', role: 'pou', isTest: true, text: ST, map: SourceMap.fromJSON([{ genStartLine: 1, lineCount: lines, file: 'TEST_Fns.TcPOU', origStartLine: 1, origStartCol: 1 }]) }
-  const project: Project = { vendor: 'twincat', dialect: 'twincat', name: 'F', root: '/f', projectFile: '/f/F.plcproj', units: [unit], libraries: [], defines: {}, warnings: [] }
+  const project: Project = { vendor: 'beckhoff', dialect: 'beckhoff', name: 'F', root: '/f', projectFile: '/f/F.plcproj', units: [unit], libraries: [], defines: {}, warnings: [] }
   const symbols = buildSymbolTableFromProject(project, lang, { caseSensitive: false })
   expect(symbols.diagnostics).toEqual([])
   const s = session()

@@ -96,10 +96,10 @@ describe('run', () => {
   })
 
   it('exits 2 naming the installed dialects for an unknown one', async () => {
-    const root = await project({ 'plc-st-test.config.yml': 'dialect: twincat\n', 'Tests/TEST_A.st': readFileSync(join(fixture('badconfig'), 'Tests', 'TEST_Any.st'), 'utf8') })
+    const root = await project({ 'plc-st-test.config.yml': 'dialect: beckhoff\n', 'Tests/TEST_A.st': readFileSync(join(fixture('badconfig'), 'Tests', 'TEST_Any.st'), 'utf8') })
     const { code, stderr } = await cli(['run', root])
     expect(code).toBe(2)
-    expect(stderr).toContain("unknown dialect 'twincat'; installed dialects: standard")
+    expect(stderr).toContain("unknown dialect 'beckhoff'; installed dialects: standard")
   })
 
   it('exits 2 listing syntax errors with their location', async () => {

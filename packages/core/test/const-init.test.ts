@@ -23,7 +23,7 @@ END_FUNCTION
 function load(decls: string[], constants: string[] = []): FbInstance {
   const text = ['PROGRAM Main', 'VAR CONSTANT', ...constants, 'END_VAR', 'VAR', ...decls, 'END_VAR', 'END_PROGRAM'].join('\n')
   const unit = (id: string, src: string): SourceUnit => ({ id, role: 'pou', isTest: false, text: src, map: SourceMap.fromJSON([{ genStartLine: 1, lineCount: src.split('\n').length, file: `${id}.TcPOU`, origStartLine: 1, origStartCol: 1 }]) })
-  const project: Project = { vendor: 'twincat', dialect: 'twincat', name: 'Fixture', root: '/fixture', projectFile: '/fixture/Fixture.plcproj', units: [unit('Types', TYPES), unit('Main', text)], libraries: [], defines: {}, warnings: [] }
+  const project: Project = { vendor: 'beckhoff', dialect: 'beckhoff', name: 'Fixture', root: '/fixture', projectFile: '/fixture/Fixture.plcproj', units: [unit('Types', TYPES), unit('Main', text)], libraries: [], defines: {}, warnings: [] }
   const symbols = buildSymbolTableFromProject(project, lang, { caseSensitive: false })
   expect(symbols.diagnostics).toEqual([])
   const session = new Session({ caseSensitive: false, limits: { ...DEFAULT_LIMITS } })
@@ -112,7 +112,7 @@ describe('constant-expression initializers', () => {
   it('still charges the allocation limit for initialized arrays', () => {
     const text = 'PROGRAM Main VAR x : ARRAY[1..100] OF INT := [-1, 2]; END_VAR END_PROGRAM'
     const unit: SourceUnit = { id: 'Main', role: 'pou', isTest: false, text, map: SourceMap.fromJSON([{ genStartLine: 1, lineCount: 1, file: 'Main.TcPOU', origStartLine: 1, origStartCol: 1 }]) }
-    const project: Project = { vendor: 'twincat', dialect: 'twincat', name: 'F', root: '/f', projectFile: '/f/F.plcproj', units: [unit], libraries: [], defines: {}, warnings: [] }
+    const project: Project = { vendor: 'beckhoff', dialect: 'beckhoff', name: 'F', root: '/f', projectFile: '/f/F.plcproj', units: [unit], libraries: [], defines: {}, warnings: [] }
     const symbols = buildSymbolTableFromProject(project, lang, { caseSensitive: false })
     const session = new Session({ caseSensitive: false, limits: { ...DEFAULT_LIMITS, maxAllocatedElements: 50 } })
     expect(() => instantiateFb('Main', createEvalContext({ symbols, session }))).toThrow(/allocation limit/)
