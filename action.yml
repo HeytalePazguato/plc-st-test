@@ -1,0 +1,131 @@
+name: plc-st-test
+description: Run IEC 61131-3 Structured Text unit tests with plc-st-test. No PLC runtime, no license, no Windows required.
+author: HeytalePazguato
+
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  path:
+    description: Project directory to test, relative to the workspace.
+    default: .
+  config:
+    description: Config file (plc-st-test.config.yml), relative to the workspace. Empty uses the one in the project directory, if any.
+    default: ''
+  project:
+    description: Project file to use, relative to the project directory. Empty lets the CLI detect it.
+    default: ''
+  reporters:
+    description: Comma-separated reporters (junit, json, tap, terminal, github). The json reporter is always added, since the outputs are read from results.json.
+    default: github,junit,terminal
+  out-dir:
+    description: Directory for report files, relative to the workspace.
+    default: plc-st-test-results
+  coverage:
+    description: Collect branch coverage ('true' or 'false').
+    default: 'false'
+  node-version:
+    description: Node.js version used to run the CLI (24 or newer).
+    default: '26'
+  upload-artifact:
+    description: Upload the report directory as a workflow artifact ('true' or 'false').
+    default: 'true'
+  artifact-name:
+    description: Artifact name. Empty derives one from the runner OS and the job, so give each use of the action in one job its own name.
+    default: ''
+
+outputs:
+  passed:
+    description: Number of passed tests. Empty when no results.json was produced.
+    value: ${{ steps.outputs.outputs.passed }}
+  failed:
+    description: Number of failed or errored tests. Empty when no results.json was produced.
+    value: ${{ steps.outputs.outputs.failed }}
+  total:
+    description: Total number of tests. Empty when no results.json was produced.
+    value: ${{ steps.outputs.outputs.total }}
+  exit-code:
+    description: Exit code of the CLI (0 all passed, 1 a test failed or errored, 2 config, ingest, parse or plugin error).
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - id: run
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_REPORTERS: ${{ inputs.reporters }}
+        INPUT_OUT_DIR: ${{ inputs.out-dir }}
+        INPUT_COVERAGE: ${{ inputs.coverage }}
+      run: |
+        # PLC_ST_TEST_LOCAL_CLI is test-only: when set, it is the path of a locally built cli.js that replaces the published package.
+        args=()
+        [ -n "$INPUT_CONFIG" ] && args+=(--config "$INPUT_CONFIG")
+        [ -n "$INPUT_PROJECT" ] && args+=(--project "$INPUT_PROJECT")
+        [ "$INPUT_COVERAGE" = "true" ] && args+=(--coverage)
+        args+=(--out-dir "$INPUT_OUT_DIR")
+
+        have_json=false
+        IFS=',' read -r -a requested <<< "$INPUT_REPORTERS"
+        for name in "${requested[@]}"; do
+          name="${name#"${name%%[![:space:]]*}"}"
+          name="${name%"${name##*[![:space:]]}"}"
+          [ -z "$name" ] && continue
+          case "$name" in
+            -*) echo "::error::invalid reporter name '$name'"; echo "exit-code=2" >> "$GITHUB_OUTPUT"; exit 2 ;;
+          esac
+          [ "$name" = "json" ] && have_json=true
+          args+=(--reporter "$name")
+        done
+        [ "$have_json" = "false" ] && args+=(--reporter json)
+
+        set +e
+        if [ -n "${PLC_ST_TEST_LOCAL_CLI:-}" ]; then
+          node "$PLC_ST_TEST_LOCAL_CLI" run "${args[@]}" -- "$INPUT_PATH"
+        else
+          VERSION=$(node -p "require(process.env.ACTION_PATH + '/packages/cli/package.json').version")
+          npx --yes "plc-st-test@$VERSION" run "${args[@]}" -- "$INPUT_PATH"
+        fi
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        exit "$code"
+
+    - id: outputs
+      if: always()
+      shell: bash
+      env:
+        INPUT_OUT_DIR: ${{ inputs.out-dir }}
+      run: |
+        # The CLI writes no results.json when it stops on a config, ingest or parse error (exit 2); the outputs stay empty then and this step still succeeds.
+        node -e '
+          const fs = require("node:fs");
+          const path = require("node:path");
+          try {
+            const { summary } = JSON.parse(fs.readFileSync(path.join(process.env.INPUT_OUT_DIR, "results.json"), "utf8"));
+            const lines = [
+              "passed=" + summary.passed,
+              "failed=" + (summary.failed + summary.errored),
+              "total=" + summary.total,
+            ];
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, lines.join("\n") + "\n");
+          } catch (error) {
+            console.log("no results.json to read outputs from: " + error.message);
+          }
+        ' || true
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: always() && inputs.upload-artifact == 'true'
+      with:
+        name: ${{ inputs.artifact-name != '' && inputs.artifact-name || format('plc-st-test-results-{0}-{1}', runner.os, github.job) }}
+        path: ${{ inputs.out-dir }}
+        if-no-files-found: ignore

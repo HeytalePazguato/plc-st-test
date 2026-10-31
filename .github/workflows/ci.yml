@@ -75,4 +75,4 @@ jobs:
 
       - name: zizmor
         # Scoped to the pinned workflows until prerelease/release.yml are rewritten (later tasks); widen to .github/ then.
-        run: pipx run zizmor==1.31.1 --no-online-audits .github/workflows/ci.yml .github/workflows/pages.yml
+        run: pipx run zizmor==1.31.1 --no-online-audits action.yml .github/workflows/ci.yml .github/workflows/pages.yml
