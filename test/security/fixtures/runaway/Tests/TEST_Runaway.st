@@ -1,0 +1,32 @@
+FUNCTION Recurse : DINT
+VAR_INPUT
+  n : DINT;
+END_VAR
+Recurse := Recurse(n + 1) + 1;
+END_FUNCTION
+
+FUNCTION_BLOCK TEST_Runaway
+VAR
+  uut : FB_Dummy;
+END_VAR
+METHOD Test_InfiniteLoop
+VAR
+  n : DINT;
+END_VAR
+  WHILE TRUE DO
+    n := n + 1;
+  END_WHILE
+END_METHOD
+METHOD Test_HugeArray
+VAR
+  big : ARRAY[1..2000000000] OF DINT;
+END_VAR
+  ASSERT_TRUE(TRUE);
+END_METHOD
+METHOD Test_DeepRecursion
+VAR
+  r : DINT;
+END_VAR
+  r := Recurse(0);
+END_METHOD
+END_FUNCTION_BLOCK

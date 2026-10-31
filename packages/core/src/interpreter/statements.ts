@@ -5,7 +5,7 @@
  *
  * Assignment stores a converted copy of the right-hand side in the target's declared representation, taken from the value already stored in the target (declared types are fixed, so the stored value always carries them): integers wrap to the target width, REAL rounds to single precision, STRING(n)/WSTRING(n) truncate to their `maxLength`, structs/arrays/enums are deep-copied with a type check. Implicit REAL → integer conversion rounds half to even, like REAL_TO_INT.
  *
- * FOR evaluates start, end and step once, rejects a zero step, skips the body when the bounds and the step's sign disagree, re-reads the control variable each iteration (so the guard sees the stored, wrapped value) and leaves it at the first value past the end after a normal termination. Every loop execution is capped at `limits.maxLoopIterations`; exceeding it raises an `IecRuntimeError` naming the loop's original file and line.
+ * FOR evaluates start, end and step once, rejects a zero step, skips the body when the bounds and the step's sign disagree, re-reads the control variable each iteration (so the guard sees the stored, wrapped value) and leaves it at the first value past the end after a normal termination. Every loop execution is capped at `limits.maxLoopIterations`; exceeding it raises an `IecLimitError` naming the loop's original file and line.
  *
  * Coverage: when the session has a `CoverageSink`, each taken branch reports the id `coverage/instrument.ts` gave it; code that is not instrumented (test POUs) reports nothing. Without a sink no lookup is done.
  */
@@ -17,7 +17,7 @@ import { evalCall, evalExpression, evalLValue, fail } from './expressions.js'
 import { IecType, froundReal, isBigIntType, isIntType, wrapInt } from './numeric.js'
 import { cloneValue, type IecValue } from './values.js'
 import type { BranchKind } from '../coverage/instrument.js'
-import { IecRuntimeError } from '../errors.js'
+import { IecLimitError, IecRuntimeError } from '../errors.js'
 import { bindInterface, isInterfaceValue } from '../oop/interface.js'
 import { declaredValue } from '../oop/property.js'
 
@@ -311,7 +311,7 @@ function iterationGuard(node: Node, ctx: EvalContext): () => void {
     count += 1
     // The wall-clock deadline is only consulted every 1024 iterations to keep the loop hot path cheap.
     if ((count & 1023) === 0) ctx.session.checkDeadline()
-    if (count > max) throw fail(node, ctx, `loop exceeded the maximum of ${String(max)} iterations (limits.maxLoopIterations)`)
+    if (count > max) throw new IecLimitError(fail(node, ctx, `loop exceeded the maximum of ${String(max)} iterations (limits.maxLoopIterations)`).message)
   }
 }
 

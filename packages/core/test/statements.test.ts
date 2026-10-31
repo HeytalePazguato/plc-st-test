@@ -13,7 +13,7 @@ import type { CallPou, ControlSignal, EvalContext } from '../src/interpreter/con
 import { Session, type CoverageSink } from '../src/session.js'
 import { instrument } from '../src/coverage/instrument.js'
 import { DEFAULT_LIMITS, type Limits } from '../src/limits.js'
-import { IecRuntimeError } from '../src/errors.js'
+import { IecLimitError, IecRuntimeError } from '../src/errors.js'
 
 let lang: Language
 
@@ -316,7 +316,7 @@ describe('statements', () => {
     it('exceeding max iterations raises with the statement original line', () => {
       for (const loop of ['WHILE TRUE DO i := i + 1; END_WHILE', 'REPEAT i := i + 1; UNTIL FALSE END_REPEAT', 'FOR i := 0 TO 100 DO ; END_FOR']) {
         const p = prepare(['i := 0;', loop], { decls: ['i : DINT;'], limits: { maxLoopIterations: 50 } })
-        expect(() => execBody(p.body, p.ctx)).toThrow(IecRuntimeError)
+        expect(() => execBody(p.body, p.ctx)).toThrow(IecLimitError)
         expect(() => execBody(p.body, p.ctx)).toThrow(`loop exceeded the maximum of 50 iterations (limits.maxLoopIterations) at ${FILE}:${String(p.lineOf(1))}`)
       }
     })

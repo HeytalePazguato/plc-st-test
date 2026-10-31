@@ -78,6 +78,14 @@ describe('github reporter', () => {
     expect(summary).toContain('75.0 %')
   })
 
+  it('escapes & and drops control characters in table cells, keeping one line per failed test', () => {
+    const failed = test('Test_1', 'failed', { failure: { kind: 'assertion', message: 'a &lt; b\u0001\u0007\u001f\u007f c\r\nd', location: loc(9) } })
+    const summary = renderGithubSummary(results([failed]))
+    expect(summary).toContain('a &amp;lt; b c d')
+    // eslint-disable-next-line no-control-regex
+    expect(summary).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/)
+  })
+
   it('writes no summary without GITHUB_STEP_SUMMARY', async () => {
     const { summary } = await run(results([]), { GITHUB_STEP_SUMMARY: undefined })
     expect(summary).toBeUndefined()

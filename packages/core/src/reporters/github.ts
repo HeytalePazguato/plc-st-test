@@ -28,9 +28,12 @@ function command(kind: 'error' | 'warning', loc: Location | undefined, title: st
   return `::${kind} ${props.join(',')}::${escapeWorkflowData(message)}`
 }
 
-/** Escape `text` for a Markdown table cell: pipes, backticks and `<`, with line breaks flattened. */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
+
+/** Escape `text` for a Markdown table cell: backslashes, pipes, backticks, `&` and `<`, with line breaks flattened and the other control characters dropped. */
 function cell(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/`/g, '\\`').replace(/</g, '&lt;').replace(/\r?\n|\r/g, ' ')
+  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/`/g, '\\`').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\r?\n|\r/g, ' ').replace(CONTROL_CHARS, '')
 }
 
 function link(loc: Location, workspace: string | undefined): string {
