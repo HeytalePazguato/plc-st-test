@@ -1,0 +1,13 @@
+# BuildKit only honours a .dockerignore next to the Dockerfile when it is named <Dockerfile>.dockerignore; this file is kept identical to Dockerfile.dockerignore for tools that look for the plain name (a test enforces this).
+# Keep host artefacts out of the build context: the image builds everything itself from source.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.github
+/docs/secret
+/_site
+/coverage
+plc-st-test-results
+**/plc-st-test-results
+.claude
