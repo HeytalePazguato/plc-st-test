@@ -123,7 +123,7 @@ export interface BuildOptions {
 export interface ProjectBuildOptions {
   caseSensitive: boolean
   /** Text transform applied to every unit before parsing (e.g. conditional compilation); must keep the line count so source maps stay valid. */
-  preprocess?: (text: string) => string
+  preprocess?: (text: string, unit: SourceUnit) => string
 }
 
 /** A diagnostic located in an original source file. */
@@ -420,9 +420,9 @@ export function buildSymbolTableFromProject(
   return table
 }
 
-function preprocessUnit(unit: SourceUnit, preprocess: ((text: string) => string) | undefined): string {
+function preprocessUnit(unit: SourceUnit, preprocess: ((text: string, unit: SourceUnit) => string) | undefined): string {
   if (preprocess === undefined) return unit.text
-  const out = preprocess(unit.text)
+  const out = preprocess(unit.text, unit)
   const before = lineCount(unit.text)
   const after = lineCount(out)
   if (after !== before) {

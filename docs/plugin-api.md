@@ -239,7 +239,7 @@ A live FUNCTION_BLOCK instance as seen by lifecycle hooks. Fields and methods:
 
 Optional hooks a dialect can implement. Members:
 
-- `preprocess?(text: string, defines: Record<string, string>): string`. Source-level preprocessing, for example conditional pragmas. It MUST preserve the line count so source maps stay valid.
+- `preprocess?(text: string, defines: Record<string, string>, warn?: (warning: PreprocessWarning) => void): string`. Source-level preprocessing, for example conditional pragmas. It MUST preserve the line count so source maps stay valid. A non-fatal problem is reported through `warn` as a `PreprocessWarning` (`{ code, message, line }`, `line` 1-based in `text`), which the CLI adds to the run warnings with the original file location.
 - `onInstantiate?(inst: FbInstanceRef, ctx: HostCallContext): void`, for example TwinCAT `FB_init`.
 - `onDispose?(inst: FbInstanceRef, ctx: HostCallContext): void`, for example TwinCAT `FB_exit`.
 

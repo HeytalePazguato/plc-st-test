@@ -109,6 +109,31 @@ describe('run', () => {
     expect(JSON.parse(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8'))).toMatchObject({ summary: { total: 3, passed: 3 }, project: { dialect: 'beckhoff' } })
   })
 
+  it('selects TwinCAT {IF} regions from config defines and reports a failure at its original file line', async () => {
+    const { code, stdout } = await cli(['run', fixture('beckhoff-conditional'), '--reporter', 'terminal', 'json'])
+    expect(code, stdout).toBe(1)
+    const results = JSON.parse(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8')) as { suites: { tests: { status: string; failure?: { location: { file: string; line: number } } }[] }[] }
+    const failed = results.suites.flatMap((s) => s.tests).filter((t) => t.status === 'failed')
+    expect(failed).toHaveLength(1)
+    expect(failed[0]!.failure!.location.line).toBe(7)
+    expect(failed[0]!.failure!.location.file).toContain('TEST_Cond.st')
+  })
+
+  it('blanks the {IF} region when the define is absent, so the {ELSE} branch runs', async () => {
+    const root = await project({ 'plc-st-test.config.yml': 'dialect: beckhoff\n', 'Tests/TEST_Cond.st': readFileSync(join(fixture('beckhoff-conditional'), 'Tests', 'TEST_Cond.st'), 'utf8') })
+    const { code, stdout } = await cli(['run', root, '--reporter', 'terminal'])
+    expect(code, stdout).toBe(0)
+    expect(stdout).toContain('1 passed')
+  })
+
+  it('reports PREPROCESS_UNSUPPORTED for hasattribute conditions in the run warnings', async () => {
+    const root = await project({ 'plc-st-test.config.yml': 'dialect: beckhoff\n', 'Tests/TEST_W.st': "FUNCTION_BLOCK TEST_W\nMETHOD Test_A\n{IF hasattribute (pou: X, 'a')}\n  ASSERT_TRUE(FALSE);\n{END_IF}\n  ASSERT_TRUE(TRUE);\nEND_METHOD\nEND_FUNCTION_BLOCK\n" })
+    const { code } = await cli(['run', root, '--reporter', 'json'])
+    expect(code).toBe(0)
+    const results = JSON.parse(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8')) as { warnings: { code: string; location?: { line: number } }[] }
+    expect(results.warnings).toContainEqual(expect.objectContaining({ code: 'PREPROCESS_UNSUPPORTED', location: expect.objectContaining({ line: 3 }) }))
+  })
+
   it('exits 2 listing syntax errors with their location', async () => {
     const root = await project({ 'src/Broken.st': 'FUNCTION_BLOCK Broken\nVAR\n  x : ;\nEND_VAR\nEND_FUNCTION_BLOCK\n' })
     const { code, stderr } = await cli(['run', root])

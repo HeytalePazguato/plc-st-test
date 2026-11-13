@@ -135,9 +135,10 @@ async function prepare(path: string | undefined, opts: ProjectOptions, io: CliIo
   const language = await loadGrammar(dialect.grammarWasmPath())
   const defines = { ...project.defines, ...Object.fromEntries(Object.entries(config.defines).map(([key, value]) => [key, String(value)])) }
   const hooks = dialect.hooks
+  const preprocessWarnings: ProjectWarning[] = []
   const table = buildSymbolTableFromProject(project, language, {
     caseSensitive: dialect.caseSensitive,
-    ...(hooks?.preprocess === undefined ? {} : { preprocess: (text: string) => hooks.preprocess!(text, defines) }),
+    ...(hooks?.preprocess === undefined ? {} : { preprocess: (text: string, unit) => hooks.preprocess!(text, defines, (w) => preprocessWarnings.push({ code: w.code, message: w.message, location: unit.map.map(w.line, 1) })) }),
   })
 
   // Diagnostics with a code (a missing interface member, say) are warnings in the results; those without one mean the source did not parse.
@@ -147,7 +148,7 @@ async function prepare(path: string | undefined, opts: ProjectOptions, io: CliIo
     throw new IngestError(`${String(syntax.length)} syntax ${syntax.length === 1 ? 'error' : 'errors'}:\n${lines.join('\n')}`)
   }
 
-  const warnings = [...loaded.warnings.map((message) => ({ code: 'CONFIG', message })), ...project.warnings]
+  const warnings = [...loaded.warnings.map((message) => ({ code: 'CONFIG', message })), ...project.warnings, ...preprocessWarnings]
   return { config, modules, registries, project, dialect, table, warnings }
 }
 

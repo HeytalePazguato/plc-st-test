@@ -24,9 +24,16 @@ export interface FbInstanceRef {
   callMethod(name: string, args: CallArg[]): IecValue | undefined
 }
 
+/** A non-fatal problem a `preprocess` hook reports; `line` is 1-based in the text, which is the original file line because preprocessing keeps the line count. */
+export interface PreprocessWarning {
+  code: string
+  message: string
+  line: number
+}
+
 export interface DialectHooks {
   /** Source-level preprocessing (e.g. conditional pragmas). MUST preserve the line count so source maps stay valid. */
-  preprocess?(text: string, defines: Record<string, string>): string
+  preprocess?(text: string, defines: Record<string, string>, warn?: (warning: PreprocessWarning) => void): string
   onInstantiate?(inst: FbInstanceRef, ctx: HostCallContext): void
   onDispose?(inst: FbInstanceRef, ctx: HostCallContext): void
 }
