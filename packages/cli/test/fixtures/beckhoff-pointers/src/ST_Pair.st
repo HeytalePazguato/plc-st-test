@@ -1,0 +1,6 @@
+TYPE ST_Pair :
+STRUCT
+  nA : INT;
+  nB : DINT;
+END_STRUCT;
+END_TYPE

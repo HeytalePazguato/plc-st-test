@@ -7,7 +7,7 @@
 import type { Node } from 'web-tree-sitter'
 import type { IecValue, NodeEvaluator, Slot } from '@plc-st/plugin-api'
 import type { EvalContext } from './context.js'
-import { evalExpression, evalLValue, fail } from './expressions.js'
+import { evalExpression, evalLValue, evalRawLValue, fail } from './expressions.js'
 import { storeValue } from './statements.js'
 
 export const NODE_EVALUATOR: NodeEvaluator = Object.freeze({
@@ -17,4 +17,7 @@ export const NODE_EVALUATOR: NodeEvaluator = Object.freeze({
     storeValue(slot, value, node as Node, ctx as EvalContext)
   },
   error: (node: unknown, ctx: unknown, message: string) => fail(node as Node, ctx as EvalContext, message),
+  rawLvalue: (node: unknown, ctx: unknown) => evalRawLValue(node as Node, ctx as EvalContext),
+  handleOf: (slot: Slot, ctx: unknown) => (ctx as EvalContext).session.slotTable.handleOf(slot),
+  slotOf: (handle: number, ctx: unknown) => (ctx as EvalContext).session.slotTable.slotOf(handle),
 })

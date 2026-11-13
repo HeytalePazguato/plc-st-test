@@ -194,6 +194,12 @@ function convertScalar(target: Scalar, value: IecValue, mismatch: () => Error): 
   }
   if (value.kind !== 'scalar') throw mismatch()
   const s = value.type
+  if (t === IecType.POINTER) {
+    // Only a pointer, or the integer 0 (NULL), can be stored into a pointer.
+    if (s === IecType.POINTER) return make(value.value)
+    if (isIntType(s) && Number(value.value) === 0) return make(0)
+    throw mismatch()
+  }
   if (t === IecType.BOOL) {
     if (s !== IecType.BOOL) throw mismatch()
     return make(value.value)

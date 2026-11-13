@@ -109,6 +109,36 @@ describe('run', () => {
     expect(JSON.parse(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8'))).toMatchObject({ summary: { total: 3, passed: 3 }, project: { dialect: 'beckhoff' } })
   })
 
+  it('runs TwinCAT pointers and references (ADR, p^, REF=, __ISVALIDREF, SIZEOF) through the real interpreter', async () => {
+    const { code, stdout } = await cli(['run', fixture('beckhoff-pointers'), '--reporter', 'terminal', 'json'])
+    expect(code, stdout).toBe(0)
+    expect(JSON.parse(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8'))).toMatchObject({ summary: { total: 4, passed: 4 } })
+  })
+
+  it('reports a NULL dereference, pointer arithmetic and an unbound reference as runtime errors', async () => {
+    const source = (body: string): string => `FUNCTION_BLOCK TEST_E\nVAR\n  nVal : INT;\n  pInt : POINTER TO INT;\n  rVal : REFERENCE TO INT;\nEND_VAR\nMETHOD Test_A\n${body}\nEND_METHOD\nEND_FUNCTION_BLOCK\n`
+    const cases: [string, string][] = [
+      ['  pInt^ := 1;', 'null pointer dereference'],
+      ['  pInt := ADR(nVal);\n  pInt := pInt + 2;', 'pointer arithmetic is not supported (fidelity statement)'],
+      ['  rVal := 1;', 'null reference dereference'],
+    ]
+    for (const [body, message] of cases) {
+      const root = await project({ 'plc-st-test.config.yml': 'dialect: beckhoff\n', 'Tests/TEST_E.st': source(body) })
+      const { code } = await cli(['run', root, '--reporter', 'json'])
+      expect(code).toBe(1)
+      const raw = readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8')
+      expect(raw).toContain('"errored"')
+      expect(raw).toContain(message)
+    }
+  })
+
+  it('fails the same pointer source under the standard dialect with the unsupported-construct error', async () => {
+    const root = await project({ 'plc-st-test.config.yml': 'dialect: standard\n', 'Tests/TEST_P.st': 'FUNCTION_BLOCK TEST_P\nVAR\n  nVal : INT;\n  pInt : POINTER TO INT;\nEND_VAR\nMETHOD Test_A\n  pInt := ADR(nVal);\nEND_METHOD\nEND_FUNCTION_BLOCK\n' })
+    const { code } = await cli(['run', root, '--reporter', 'json'])
+    expect(code).not.toBe(0)
+    expect(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8')).toContain('unsupported construct address_of_expression')
+  })
+
   it('selects TwinCAT {IF} regions from config defines and reports a failure at its original file line', async () => {
     const { code, stdout } = await cli(['run', fixture('beckhoff-conditional'), '--reporter', 'terminal', 'json'])
     expect(code, stdout).toBe(1)

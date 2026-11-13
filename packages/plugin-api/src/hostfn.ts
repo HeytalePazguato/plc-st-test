@@ -32,6 +32,8 @@ export interface HostFnDef {
   name: string
   minArgs: number
   maxArgs: number
+  /** Receive `REFERENCE TO` arguments as the reference itself (value and slot) instead of the referenced variable; needed by validity checks such as `__ISVALIDREF`. */
+  rawArgs?: boolean
   /** Returns the function result, or `undefined` for a function without a return value. */
   call(args: CallArg[], ctx: HostCallContext): IecValue | undefined
 }

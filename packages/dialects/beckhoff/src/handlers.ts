@@ -8,6 +8,7 @@
 
 import type { IecValue, NodeEvaluator, NodeHandler } from '@plc-st/plugin-api'
 import type { Node } from 'web-tree-sitter'
+import { addressOfExpression, dereferenceExpression, referenceAssignmentStatement } from './pointers.js'
 
 const TRUE: IecValue = { kind: 'scalar', type: 'BOOL', value: true }
 const FALSE: IecValue = { kind: 'scalar', type: 'BOOL', value: false }
@@ -53,6 +54,9 @@ export const noOp: NodeHandler = () => undefined
 export const beckhoffNodeHandlers: Readonly<Record<string, NodeHandler>> = Object.freeze({
   short_circuit_expression: shortCircuitExpression,
   set_reset_assignment_statement: setResetAssignmentStatement,
+  address_of_expression: addressOfExpression,
+  dereference_expression: dereferenceExpression,
+  reference_assignment_statement: referenceAssignmentStatement,
   pragma: noOp,
   attribute_pragma: noOp,
   conditional_directive: noOp,

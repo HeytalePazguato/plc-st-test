@@ -165,6 +165,7 @@ function createSessionFactory({ config, modules, project, dialect, table }: Prep
     for (const def of dialect.fbStubs ?? []) session.fbStubs.register(def, source)
     for (const def of dialect.hostFns ?? []) session.hostFns.register(def, source)
     for (const [type, handler] of Object.entries(dialect.nodeHandlers ?? {})) session.nodeHandlers.set(type, handler)
+    for (const [type, handler] of Object.entries(dialect.lvalueHandlers ?? {})) session.lvalueHandlers.set(type, handler)
     applyPlugins(modules, session, createPluginRegistries(), pluginOptions(config))
     return session
   }

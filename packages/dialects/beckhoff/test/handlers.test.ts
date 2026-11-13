@@ -75,6 +75,15 @@ const evaluator: NodeEvaluator = {
   error(raw, _ctx, message) {
     return new StandInError(`${message} at line ${String((raw as Node).startPosition.row + 1)}`)
   },
+  rawLvalue(node, ctx) {
+    return evaluator.lvalue(node, ctx)
+  },
+  handleOf() {
+    throw new Error('the stand-in has no slot table')
+  },
+  slotOf() {
+    return undefined
+  },
 }
 
 function context(vars: Record<string, IecValue>): Ctx {
@@ -116,7 +125,7 @@ describe('beckhoffDialect', () => {
       testStrategy: 'method',
       builtinLibraries: ['Tc2_Standard', 'Tc2_System', 'Tc3_Module', 'PlcStTest'],
     })
-    expect(Object.keys(beckhoffDialect.nodeHandlers ?? {}).sort()).toEqual(['attribute_pragma', 'conditional_directive', 'pragma', 'set_reset_assignment_statement', 'short_circuit_expression'])
+    expect(Object.keys(beckhoffDialect.nodeHandlers ?? {}).sort()).toEqual(['address_of_expression', 'attribute_pragma', 'conditional_directive', 'dereference_expression', 'pragma', 'reference_assignment_statement', 'set_reset_assignment_statement', 'short_circuit_expression'])
   })
 
   it('resolves the published Beckhoff grammar wasm', () => {

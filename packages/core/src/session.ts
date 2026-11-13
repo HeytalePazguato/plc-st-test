@@ -3,7 +3,7 @@
  *
  * Everything that could be tempting to keep as a module-level mutable registry lives on a `Session` instead, so two sessions in one process (e.g. parallel test files, or an LSP serving several projects) never see each other's host functions, stubs or warnings.
  */
-import type { FbStubDef, HostFnDef, IecValue, NodeHandler } from '@plc-st/plugin-api'
+import type { FbStubDef, HostFnDef, IecValue, LvalueHandler, NodeHandler, Slot } from '@plc-st/plugin-api'
 import type { OriginalLocation, ProjectWarning } from '@plc-st/project-model'
 import { caseKey } from './case.js'
 import type { BranchMap } from './coverage/instrument.js'
@@ -46,6 +46,26 @@ export class MockStore {
 
   clear(): void {
     this.records.clear()
+  }
+}
+
+/** Issues stable numeric handles for slots (pointers and references hold a handle, not the slot); handle `0` is NULL. Per session, so two sessions never share pointers. */
+export class SlotTable {
+  private readonly handles = new Map<Slot, number>()
+  private readonly slots: Slot[] = []
+
+  handleOf(slot: Slot): number {
+    let handle = this.handles.get(slot)
+    if (handle === undefined) {
+      this.slots.push(slot)
+      handle = this.slots.length
+      this.handles.set(slot, handle)
+    }
+    return handle
+  }
+
+  slotOf(handle: number): Slot | undefined {
+    return this.slots[handle - 1]
   }
 }
 
@@ -105,6 +125,8 @@ export class Session {
   readonly hostFns: Registry<HostFnDef>
   readonly fbStubs: Registry<FbStubDef>
   readonly nodeHandlers = new Map<string, NodeHandler>()
+  readonly lvalueHandlers = new Map<string, LvalueHandler>()
+  readonly slotTable = new SlotTable()
   readonly warnings: ProjectWarning[] = []
   readonly preCycle: SessionHook[] = []
   readonly postCycle: SessionHook[] = []

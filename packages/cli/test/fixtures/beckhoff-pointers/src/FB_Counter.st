@@ -1,0 +1,8 @@
+FUNCTION_BLOCK FB_Counter
+VAR_OUTPUT
+  nCount : INT;
+END_VAR
+METHOD Bump
+  nCount := nCount + 1;
+END_METHOD
+END_FUNCTION_BLOCK

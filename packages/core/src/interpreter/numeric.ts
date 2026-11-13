@@ -31,6 +31,8 @@ export const IecType = {
   TIME: 'TIME',
   STRING: 'STRING',
   WSTRING: 'WSTRING',
+  POINTER: 'POINTER',
+  REFERENCE: 'REFERENCE',
 } as const satisfies { [K in IecTypeName]: K }
 
 export type IecType = IecTypeName

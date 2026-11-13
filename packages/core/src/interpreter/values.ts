@@ -260,11 +260,27 @@ function buildDefault(typeNode: Node, initNode: Node | undefined, env: InitEnv):
     case 'identifier':
     case 'qualified_identifier':
       return namedDefault(typeNode.text, initNode, env)
+    case 'pointer_type':
+      return handleDefault(IecType.POINTER, initNode, env)
+    case 'reference_type':
+    case 'reference_to_type':
+      return handleDefault(IecType.REFERENCE, initNode, env)
     default:
       // Unknown specifier (pointer/reference/generic): use an opaque struct.
       chargeAllocation(meter, 1)
       return { kind: 'struct', typeName: typeNode.text, fields: new Map() }
   }
+}
+
+/** The NULL value of a pointer or reference type; a constant initializer may only be NULL (`0`) or an existing pointer, since a reference is bound by `REF=`. */
+function handleDefault(type: IecType, initNode: Node | undefined, env: InitEnv): IecValue {
+  chargeAllocation(env.meter, 1)
+  if (initNode === undefined) return { kind: 'scalar', type, value: 0 }
+  const v = evaluateConstant(initNode, undefined, env, env.constEval)
+  const isNull = v.kind === 'scalar' && isIntType(v.type) && Number(v.value) === 0
+  if (v.kind === 'scalar' && v.type === IecType.POINTER && type === IecType.POINTER) return { kind: 'scalar', type, value: v.value }
+  if (!isNull) throw env.constEval.error(initNode, `cannot initialize '${env.owner}' (${type}) with ${v.kind === 'scalar' ? v.type : v.kind}`)
+  return { kind: 'scalar', type, value: 0 }
 }
 
 function stringDefault(typeNode: Node, initNode: Node | undefined, env: InitEnv): IecValue {

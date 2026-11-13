@@ -338,7 +338,9 @@ function valueAtNode(node: Node, ctx: EvalContext): IecValue | undefined {
     case 'index_expression':
       return evalExpression(node, ctx)
     default:
-      return isThis(node) || isSuper(node) ? ctx.self?.value : undefined
+      if (isThis(node) || isSuper(node)) return ctx.self?.value
+      // A dialect construct that yields a value (e.g. `pFb^`) can be a method receiver.
+      return ctx.session.nodeHandlers.has(node.type) ? evalExpression(node, ctx) : undefined
   }
 }
 

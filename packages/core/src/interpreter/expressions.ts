@@ -7,7 +7,7 @@
  *
  * TIME values are nanoseconds as `bigint`. D#, TOD# and DT# literals fold onto TIME (as the value model does for the date/time family): DATE and DATE_AND_TIME are nanoseconds since 1970-01-01 UTC, TIME_OF_DAY is nanoseconds since midnight.
  *
- * Values returned for variables, members and elements are the stored objects themselves (no copy), so a caller that stores a result elsewhere must `cloneValue` it first. `THIS` / `THIS^` and `SUPER` / `SUPER^` evaluate to the running FB instance (`ctx.self`); other pointers/references are not supported in core: such nodes, like any other unknown node type, are offered to the session's `nodeHandlers` before an `unsupported construct` error is raised.
+ * Values returned for variables, members and elements are the stored objects themselves (no copy), so a caller that stores a result elsewhere must `cloneValue` it first. `THIS` / `THIS^` and `SUPER` / `SUPER^` evaluate to the running FB instance (`ctx.self`); other pointer nodes (`ADR`, `p^`, `REF=`), like any other unknown node type, are offered to the session's `nodeHandlers` (and, as assignment targets, `lvalueHandlers`) before an `unsupported construct` error is raised. A `REFERENCE` variable is followed to the variable it is bound to on every read and write; `POINTER` values compare with `=` and `<>` and refuse arithmetic.
  */
 
 import type { Node } from 'web-tree-sitter'
@@ -217,6 +217,20 @@ export function evalExpression(node: Node, ctx: EvalContext, enumHint?: string):
 
 /** Resolve an assignable expression — variable, struct/FB member, array element — to its storage `Slot`. Member and element slots are live views: writing `value` updates the containing struct/array in place. */
 export function evalLValue(node: Node, ctx: EvalContext): Slot {
+  return followReference(evalRawLValue(node, ctx), node, ctx)
+}
+
+/** The variable a `REFERENCE TO` slot is bound to (references auto-dereference on read and write); any other slot is returned as is. An unbound reference is a null dereference. */
+function followReference(slot: Slot, node: Node, ctx: EvalContext): Slot {
+  const v = declaredValue(slot)
+  if (v.kind !== 'scalar' || v.type !== IecType.REFERENCE) return slot
+  const target = ctx.session.slotTable.slotOf(Number(v.value))
+  if (target === undefined) throw fail(node, ctx, `null reference dereference: '${node.text}' is not bound to a variable`)
+  return target
+}
+
+/** Like `evalLValue`, but a `REFERENCE TO` variable yields its own slot (the one holding the reference) instead of the variable it is bound to. */
+export function evalRawLValue(node: Node, ctx: EvalContext): Slot {
   switch (node.type) {
     case 'identifier': {
       const slot = ctx.chain.lookup(node.text)
@@ -224,16 +238,19 @@ export function evalLValue(node: Node, ctx: EvalContext): Slot {
       return slot
     }
     case 'parenthesized_expression':
-      return evalLValue(inner(node), ctx)
+      return evalRawLValue(inner(node), ctx)
     case 'member_access_expression':
       return memberSlot(node, ctx)
     case 'index_expression':
       return elementSlot(node, ctx)
-    default:
+    default: {
+      const handler = ctx.session.lvalueHandlers.get(node.type)
+      if (handler !== undefined) return handler(node, ctx, NODE_EVALUATOR)
       if (ctx.session.nodeHandlers.has(node.type) || !EXPRESSION_TYPES.includes(node.type)) {
         throw fail(node, ctx, `unsupported construct ${node.type}`)
       }
       throw fail(node, ctx, `'${node.text}' is not assignable`)
+    }
   }
 }
 
@@ -242,9 +259,10 @@ export function evalCall(node: Node, ctx: EvalContext): IecValue | undefined {
   const fnNode = field(node, 'function')
   const callee = fnNode.text
   const args: CallArg[] = []
+  const raw = ctx.session.hostFns.get(callee)?.rawArgs === true
   for (const arg of operands(field(node, 'arguments'))) {
     if (arg.type !== 'named_argument') {
-      args.push(argument(arg, ctx))
+      args.push(argument(arg, ctx, raw))
       continue
     }
     const name = field(arg, 'name').text
@@ -253,7 +271,7 @@ export function evalCall(node: Node, ctx: EvalContext): IecValue | undefined {
       const slot = evalLValue(valueNode, ctx)
       args.push({ name, value: declaredValue(slot), slot })
     } else {
-      args.push({ name, ...argument(valueNode, ctx) })
+      args.push({ name, ...argument(valueNode, ctx, raw) })
     }
   }
   return ctx.callPou(callee, args, ctx, fnNode)
@@ -311,7 +329,7 @@ const EXPRESSION_TYPES: readonly string[] = [
 
 function identifier(node: Node, ctx: EvalContext, enumHint: string | undefined): IecValue {
   const slot = ctx.chain.lookup(node.text)
-  if (slot !== undefined) return slot.value
+  if (slot !== undefined) return followReference(slot, node, ctx).value
   const member = bareEnum(node, ctx, enumHint)
   if (member !== undefined) return member
   throw fail(node, ctx, `unknown identifier '${node.text}'`)
@@ -445,14 +463,15 @@ function isAddressable(node: Node, ctx: EvalContext): boolean {
     case 'index_expression':
       return isAddressable(field(node, 'object'), ctx)
     default:
-      return isSelf(node) && ctx.self !== undefined
+      return (isSelf(node) && ctx.self !== undefined) || ctx.session.lvalueHandlers.has(node.type)
   }
 }
 
-function argument(node: Node, ctx: EvalContext): { value: IecValue; slot?: Slot } {
+/** `raw` keeps a `REFERENCE TO` argument as the reference itself (see `HostFnDef.rawArgs`). */
+function argument(node: Node, ctx: EvalContext, raw = false): { value: IecValue; slot?: Slot } {
   // The instance itself has no slot; only its members do.
   if (!isAddressable(node, ctx) || isSelf(node)) return { value: evalExpression(node, ctx) }
-  const slot = evalLValue(node, ctx)
+  const slot = raw ? evalRawLValue(node, ctx) : evalLValue(node, ctx)
   return { value: slot.value, slot }
 }
 
@@ -516,6 +535,7 @@ function binary(node: Node, ctx: EvalContext): IecValue {
 
   const ls = expectScalar(l, leftNode, ctx)
   const rs = expectScalar(r, rightNode, ctx)
+  if (ls.type === IecType.POINTER || rs.type === IecType.POINTER) throw fail(node, ctx, 'pointer arithmetic is not supported (fidelity statement)')
   if (op === 'AND' || op === '&' || op === 'OR' || op === 'XOR') {
     return logical(op, ls, rs, node, ctx)
   }
@@ -605,6 +625,12 @@ function compare(l: IecValue, r: IecValue, node: Node, ctx: EvalContext): number
   }
   if (l.kind !== 'scalar' || r.kind !== 'scalar') throw mismatch()
   if (l.type === IecType.BOOL && r.type === IecType.BOOL) return Number(l.value) - Number(r.value)
+  if (l.type === IecType.POINTER || r.type === IecType.POINTER) {
+    // A pointer compares with another pointer or with an integer (`p <> 0` tests for NULL).
+    const comparable = (v: Scalar): boolean => v.type === IecType.POINTER || isIntType(v.type)
+    if (!comparable(l) || !comparable(r)) throw mismatch()
+    return bigCompare(toBig(l.value), toBig(r.value))
+  }
   if (isStringType(l.type) && isStringType(r.type)) {
     const a = l.value as string
     const b = r.value as string

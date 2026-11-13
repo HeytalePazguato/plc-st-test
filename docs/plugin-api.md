@@ -119,6 +119,7 @@ A FUNCTION implemented in TypeScript. Fields:
 - `name: string`
 - `minArgs: number`
 - `maxArgs: number`
+- `rawArgs?: boolean`. When true, a `REFERENCE` argument reaches `call` as the reference itself (its `REFERENCE` value and own slot) instead of the variable it is bound to, so a host function can test whether it is bound (`__ISVALIDREF`).
 - `call(args: CallArg[], ctx: HostCallContext): IecValue | undefined`. Returns the function result, or `undefined` for a function with no return value.
 
 ### `VarSpec`
@@ -226,6 +227,15 @@ Core's interpreter as handed to a `NodeHandler`, so a dialect can evaluate the c
 - `lvalue(node, ctx): Slot`: resolves an assignable expression (variable, struct or FB member, array element) to its live slot.
 - `store(slot, value, node, ctx): void`: stores `value` converted to the slot's declared type, with the same rules as `:=`. `node` locates conversion errors.
 - `error(node, ctx, message): Error`: a runtime error whose message ends with `at <file>:<line>` of `node` in the original source. The handler throws it.
+- `rawLvalue(node, ctx): Slot`: like `lvalue`, but a `REFERENCE` variable yields its own slot (the one holding the reference) instead of the variable it is bound to. `lvalue` and `evaluate` follow a bound reference automatically and raise a null-reference runtime error for an unbound one.
+- `handleOf(slot, ctx): number`: the handle the session's slot table issues for `slot`. The same slot always gets the same handle, handles start at 1 and are never reused, and `0` is NULL. Pointers and references store this handle as the `value` of a `POINTER` / `REFERENCE` scalar (`{ kind: 'scalar', type: 'POINTER', value: <handle> }`).
+- `slotOf(handle, ctx): Slot | undefined`: the slot behind a handle, or `undefined` for NULL or an unknown handle.
+
+Core compares `POINTER` values with `=` and `<>` (against another pointer or an integer, so `p <> 0` tests for NULL), lets a pointer variable be assigned a pointer or `0`, and refuses every arithmetic or logical operator on a pointer with `pointer arithmetic is not supported (fidelity statement)`. A variable declared `POINTER TO`, `REFERENCE TO` or `REF_TO` starts as NULL (a constant initializer may only be `0`). A `POINTER` or `REFERENCE` is only meaningful while the session that issued its handle lives.
+
+### `LvalueHandler`
+
+Type `(node: unknown, ctx: unknown, evaluator: NodeEvaluator) => Slot`. Resolves a dialect-specific assignable node (for example a dereference `p^`) to its live slot, so the node can be the target of `:=`, a call output binding or a VAR_IN_OUT argument. Core offers a node to the session's lvalue handlers only when it does not resolve that node type itself, and a node type handled this way also counts as addressable for call arguments.
 
 ### `FbInstanceRef`
 
@@ -253,6 +263,7 @@ A vendor flavour of ST: its grammar, rules, test strategy, and built-in library 
 - `caseSensitive: boolean`
 - `testStrategy: TestStrategyKind`
 - `nodeHandlers?: Record<string, NodeHandler>`
+- `lvalueHandlers?: Record<string, LvalueHandler>`
 - `fbStubs?: FbStubDef[]`
 - `hostFns?: HostFnDef[]`
 - `builtinLibraries?: string[]`

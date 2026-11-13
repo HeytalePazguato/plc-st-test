@@ -26,8 +26,10 @@ export type IecType =
   | 'TIME'
   | 'STRING'
   | 'WSTRING'
+  | 'POINTER'
+  | 'REFERENCE'
 
-/** A runtime value: scalar, array, struct, or enum. Types up to 32 bits are JS `number`; LINT/ULINT/LWORD and TIME (nanoseconds; the date/time family folds onto it) are `bigint`. `maxLength` is the declared capacity of a `STRING(n)`/`WSTRING(n)` variable; assignments truncate to it. */
+/** `POINTER` and `REFERENCE` scalars carry a slot handle (a number issued by the session's slot table, `0` meaning NULL); a `REFERENCE` variable is dereferenced automatically on read and write. A runtime value: scalar, array, struct, or enum. Types up to 32 bits are JS `number`; LINT/ULINT/LWORD and TIME (nanoseconds; the date/time family folds onto it) are `bigint`. `maxLength` is the declared capacity of a `STRING(n)`/`WSTRING(n)` variable; assignments truncate to it. */
 export type IecValue =
   | { kind: 'scalar'; type: IecType; value: number | bigint | boolean | string; maxLength?: number }
   | {

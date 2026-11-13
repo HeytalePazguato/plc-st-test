@@ -12,7 +12,16 @@ export interface NodeEvaluator {
   store(slot: Slot, value: IecValue, node: unknown, ctx: unknown): void
   /** A runtime error whose message ends with `at <file>:<line>` of `node` in the original source; the handler throws it. */
   error(node: unknown, ctx: unknown, message: string): Error
+  /** Like `lvalue`, but a `REFERENCE TO` variable resolves to its own slot (holding the reference) instead of the variable it refers to; used to re-bind a reference. */
+  rawLvalue(node: unknown, ctx: unknown): Slot
+  /** The handle the session's slot table issues for `slot` (the same slot always gets the same handle; handles start at 1, `0` is NULL). */
+  handleOf(slot: Slot, ctx: unknown): number
+  /** The slot behind `handle`, or `undefined` for NULL or an unknown handle. */
+  slotOf(handle: number, ctx: unknown): Slot | undefined
 }
+
+/** Resolves a dialect-specific assignable node (e.g. a dereference `p^`) to its live storage slot, so it can be the target of `:=` and of call output bindings. */
+export type LvalueHandler = (node: unknown, ctx: unknown, evaluator: NodeEvaluator) => Slot
 
 /** Evaluates a dialect-specific grammar node. `node` is a web-tree-sitter `Node`; `ctx` is the core evaluation context (opaque to plugins); `evaluator` evaluates child nodes through core. In expression position the result is the node's `IecValue`; in statement position a returned control signal (`{ type: 'exit' | 'continue' | 'return' | 'normal' }`) is honoured and anything else counts as normal completion. */
 export type NodeHandler = (node: unknown, ctx: unknown, evaluator: NodeEvaluator) => unknown
@@ -46,6 +55,7 @@ export interface Dialect {
   caseSensitive: boolean
   testStrategy: TestStrategyKind
   nodeHandlers?: Record<string, NodeHandler>
+  lvalueHandlers?: Record<string, LvalueHandler>
   fbStubs?: FbStubDef[]
   hostFns?: HostFnDef[]
   builtinLibraries?: string[]
