@@ -216,7 +216,16 @@ A discovered test suite and its tests. Fields:
 
 ### `NodeHandler`
 
-Type `(node: unknown, ctx: unknown) => unknown`. Evaluates a dialect-specific grammar node. `node` is a web-tree-sitter `Node`. `ctx` is the core evaluation context, which is opaque to plugins.
+Type `(node: unknown, ctx: unknown, evaluator: NodeEvaluator) => unknown`. Evaluates a dialect-specific grammar node. `node` is a web-tree-sitter `Node`. `ctx` is the core evaluation context, which is opaque to plugins. `evaluator` gives the handler core's interpreter for the node's children. Core offers a node to the session's handlers only when it does not evaluate that node type itself. In expression position the handler returns the node's `IecValue`. In statement position a returned control signal (`{ type: 'exit' | 'continue' | 'return' | 'normal' }`) is honoured and any other result counts as normal completion. Handlers written for the two-argument form keep working.
+
+### `NodeEvaluator`
+
+Core's interpreter as handed to a `NodeHandler`, so a dialect can evaluate the children of its own constructs without importing `@plc-st/core` (dialects must not). Every method takes a web-tree-sitter `Node` (the handler's node or a descendant) and the handler's `ctx`, unchanged. Methods:
+
+- `evaluate(node, ctx): IecValue`: evaluates an expression node. Variables come back as stored, so clone a value before keeping it.
+- `lvalue(node, ctx): Slot`: resolves an assignable expression (variable, struct or FB member, array element) to its live slot.
+- `store(slot, value, node, ctx): void`: stores `value` converted to the slot's declared type, with the same rules as `:=`. `node` locates conversion errors.
+- `error(node, ctx, message): Error`: a runtime error whose message ends with `at <file>:<line>` of `node` in the original source. The handler throws it.
 
 ### `FbInstanceRef`
 

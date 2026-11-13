@@ -14,6 +14,7 @@ import type { Node } from 'web-tree-sitter'
 import type { Slot } from '@plc-st/plugin-api'
 import { NORMAL, type ControlSignal, type EvalContext } from './context.js'
 import { evalCall, evalExpression, evalLValue, fail } from './expressions.js'
+import { NODE_EVALUATOR } from './evaluator.js'
 import { IecType, froundReal, isBigIntType, isIntType, wrapInt } from './numeric.js'
 import { cloneValue, type IecValue } from './values.js'
 import type { BranchKind } from '../coverage/instrument.js'
@@ -106,7 +107,7 @@ function clauses(node: Node, type: string): Node[] {
 function handled(node: Node, ctx: EvalContext, message: string): ControlSignal {
   const handler = ctx.session.nodeHandlers.get(node.type)
   if (handler === undefined) throw fail(node, ctx, message)
-  const result = handler(node, ctx)
+  const result = handler(node, ctx, NODE_EVALUATOR)
   return isSignal(result) ? result : NORMAL
 }
 

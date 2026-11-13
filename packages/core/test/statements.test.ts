@@ -378,6 +378,17 @@ describe('statements', () => {
       expect(execStatement(fake, ctx)).toEqual({ type: 'normal' })
     })
 
+    it('hands statement handlers a NodeEvaluator that resolves, evaluates and stores with assignment conversion', () => {
+      const p = prepare(['r REF= x;'], { decls: ['r : SINT;', 'x : INT := 300;'] })
+      p.ctx.session.nodeHandlers.set('reference_assignment_statement', (n, c, evaluator) => {
+        const node = n as Node
+        evaluator.store(evaluator.lvalue(node.childForFieldName('left'), c), evaluator.evaluate(node.childForFieldName('right'), c), node, c)
+      })
+      execBody(p.body, p.ctx)
+      // 300 wraps to SINT exactly like `r := x;` would.
+      expect(p.ctx.chain.lookup('r')?.value).toEqual(scalar(IecType.SINT, 44))
+    })
+
     it('an unhandled statement type raises with its original location', () => {
       const p = prepare(['r REF= x;'], { decls: ['r : INT;', 'x : INT;'] })
       expect(p.body[0].type).toBe('reference_assignment_statement')

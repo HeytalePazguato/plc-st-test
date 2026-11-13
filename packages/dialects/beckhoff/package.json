@@ -1,7 +1,7 @@
 {
   "name": "@plc-st/dialect-beckhoff",
   "version": "0.0.0",
-  "description": "Dialect plugin for plc-st-test.",
+  "description": "Beckhoff TwinCAT 3 Structured Text dialect plugin for plc-st-test.",
   "type": "module",
   "license": "MIT",
   "author": "HeytalePazguato",
@@ -27,10 +27,14 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "tree-sitter-iec61131-3-st-beckhoff": "~0.1.0"
+  },
   "peerDependencies": {
     "@plc-st/plugin-api": "workspace:^"
   },
   "devDependencies": {
-    "@plc-st/plugin-api": "workspace:^"
+    "@plc-st/plugin-api": "workspace:^",
+    "web-tree-sitter": "~0.27.1"
   }
 }

@@ -4,8 +4,9 @@
 #
 # Build-script decisions:
 #   esbuild (used by vitest) — allowed to build.
-#   tree-sitter-iec61131-3-st — declined; we load its prebuilt .wasm via
-#     web-tree-sitter and never use the native node-gyp binding.
+#   tree-sitter-iec61131-3-st and tree-sitter-iec61131-3-st-beckhoff — declined;
+#     we load their prebuilt .wasm via web-tree-sitter and never use the native
+#     node-gyp binding.
 packages:
   - 'packages/*'
   - 'packages/ingestors/*'
@@ -13,5 +14,7 @@ packages:
 allowBuilds:
   esbuild: true
   tree-sitter-iec61131-3-st: false
+  tree-sitter-iec61131-3-st-beckhoff: false
 minimumReleaseAgeExclude:
   - tree-sitter-iec61131-3-st@0.1.2
+  - tree-sitter-iec61131-3-st-beckhoff@0.1.0

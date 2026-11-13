@@ -398,6 +398,16 @@ describe('evalExpression', () => {
       expect(evalExpression(node, ctx)).toEqual(scalar(IecType.INT, 6))
     })
 
+    it('hands handlers a NodeEvaluator that evaluates children and builds located errors', () => {
+      const { node, ctx, line } = prepare('p^ + 1', { decls: ['p : INT := 5;'] })
+      ctx.session.nodeHandlers.set('dereference_expression', (n, c, evaluator) => evaluator.evaluate((n as Node).childForFieldName('pointer'), c))
+      expect(evalExpression(node, ctx)).toEqual(scalar(IecType.INT, 6))
+      ctx.session.nodeHandlers.set('dereference_expression', (n, c, evaluator) => {
+        throw evaluator.error(n, c, 'no pointers here')
+      })
+      expect(() => evalExpression(node, ctx)).toThrow(`no pointers here at ${FILE}:${String(line)}`)
+    })
+
     it('an unknown node type raises with its original-file location', () => {
       const { node, ctx, line } = prepare('ADR(x)', { decls: ['x : INT;'] })
       expect(() => evalExpression(node, ctx)).toThrow(`unsupported construct address_of_expression at ${FILE}:${String(line)}`)

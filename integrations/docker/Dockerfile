@@ -9,7 +9,7 @@ COPY package.json ./
 RUN npm install --global "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
 COPY . .
 RUN pnpm install --frozen-lockfile && pnpm build
-# pnpm 11 `deploy` works as-is here (no --legacy, no inject-workspace-packages): it copies the workspace packages and their production dependencies into /out, including tree-sitter-iec61131-3-st with its grammar .wasm, the only grammar wasm the CLI loads today (the beckhoff and br dialects reuse it).
+# pnpm 11 `deploy` works as-is here (no --legacy, no inject-workspace-packages): it copies the workspace packages and their production dependencies into /out, including the grammar .wasm files the CLI loads: tree-sitter-iec61131-3-st (standard dialect) and tree-sitter-iec61131-3-st-beckhoff (beckhoff dialect).
 RUN pnpm --filter plc-st-test deploy --prod /out
 
 FROM node:26-alpine3.24@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94

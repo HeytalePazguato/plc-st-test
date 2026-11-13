@@ -96,10 +96,17 @@ describe('run', () => {
   })
 
   it('exits 2 naming the installed dialects for an unknown one', async () => {
-    const root = await project({ 'plc-st-test.config.yml': 'dialect: beckhoff\n', 'Tests/TEST_A.st': readFileSync(join(fixture('badconfig'), 'Tests', 'TEST_Any.st'), 'utf8') })
+    const root = await project({ 'plc-st-test.config.yml': 'dialect: nope\n', 'Tests/TEST_A.st': readFileSync(join(fixture('badconfig'), 'Tests', 'TEST_Any.st'), 'utf8') })
     const { code, stderr } = await cli(['run', root])
     expect(code).toBe(2)
-    expect(stderr).toContain("unknown dialect 'beckhoff'; installed dialects: standard")
+    expect(stderr).toContain("unknown dialect 'nope'; installed dialects: standard, beckhoff")
+  })
+
+  it('runs a project through the built-in Beckhoff dialect: AND_THEN / OR_ELSE, S= / R= and pragmas', async () => {
+    const { code, stdout } = await cli(['run', fixture('beckhoff'), '--reporter', 'terminal', 'json'])
+    expect(code, stdout).toBe(0)
+    expect(stdout).toContain('3 passed')
+    expect(JSON.parse(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8'))).toMatchObject({ summary: { total: 3, passed: 3 }, project: { dialect: 'beckhoff' } })
   })
 
   it('exits 2 listing syntax errors with their location', async () => {

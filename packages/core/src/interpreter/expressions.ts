@@ -19,6 +19,7 @@ import { IecError, IecRuntimeError } from '../errors.js'
 import { caseKey } from '../case.js'
 import { declaredValue } from '../oop/property.js'
 import { UNIT_NS, scaled, parseDurationBody } from './time.js'
+import { NODE_EVALUATOR } from './evaluator.js'
 
 type Scalar = Extract<IecValue, { kind: 'scalar' }>
 type ArrayValue = Extract<IecValue, { kind: 'array' }>
@@ -208,7 +209,7 @@ export function evalExpression(node: Node, ctx: EvalContext, enumHint?: string):
     default: {
       if (node.type === 'dereference_expression' && isSelf(node)) return thisValue(node, ctx)
       const handler = ctx.session.nodeHandlers.get(node.type)
-      if (handler !== undefined) return handler(node, ctx) as IecValue
+      if (handler !== undefined) return handler(node, ctx, NODE_EVALUATOR) as IecValue
       throw fail(node, ctx, `unsupported construct ${node.type}`)
     }
   }

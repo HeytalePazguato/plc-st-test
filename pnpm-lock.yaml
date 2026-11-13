@@ -100,10 +100,17 @@ importers:
         version: 0.27.1
 
   packages/dialects/beckhoff:
+    dependencies:
+      tree-sitter-iec61131-3-st-beckhoff:
+        specifier: ~0.1.0
+        version: 0.1.0
     devDependencies:
       '@plc-st/plugin-api':
         specifier: workspace:^
         version: link:../../plugin-api
+      web-tree-sitter:
+        specifier: ~0.27.1
+        version: 0.27.1
 
   packages/dialects/br:
     devDependencies:
@@ -989,6 +996,15 @@ packages:
   tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
+
+  tree-sitter-iec61131-3-st-beckhoff@0.1.0:
+    resolution: {integrity: sha512-4KmbDVbUrgATNUvrpZcSDSgomLe4p4YJOrpW5k9K+WFzLR2M96/phXCcKESBNR80NuMSvdcPZsnsja8ijeSGrA==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      tree-sitter: ^0.25.0
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
 
   tree-sitter-iec61131-3-st@0.1.2:
     resolution: {integrity: sha512-1SXKmvNhJAPRMduqEgq+EwQP7IsbGFNp8ZDMQ83jjCoW71vOCYG4rL3v8G8QzxQ+fKAgaKLyUpzGR4JIvz8u8Q==}
@@ -1921,6 +1937,12 @@ snapshots:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
+
+  tree-sitter-iec61131-3-st-beckhoff@0.1.0:
+    dependencies:
+      node-addon-api: 8.8.0
+      node-gyp-build: 4.8.4
+      tree-sitter-iec61131-3-st: 0.1.2
 
   tree-sitter-iec61131-3-st@0.1.2:
     dependencies:
