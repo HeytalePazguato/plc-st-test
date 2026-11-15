@@ -81,6 +81,12 @@ const evaluator: NodeEvaluator = {
   handleOf() {
     throw new Error('the stand-in has no slot table')
   },
+  allocate() {
+    throw new Error('stand-in evaluator does not allocate')
+  },
+  free() {
+    throw new Error('stand-in evaluator does not free')
+  },
   slotOf() {
     return undefined
   },
@@ -125,7 +131,7 @@ describe('beckhoffDialect', () => {
       testStrategy: 'method',
       builtinLibraries: ['Tc2_Standard', 'Tc2_System', 'Tc3_Module', 'PlcStTest'],
     })
-    expect(Object.keys(beckhoffDialect.nodeHandlers ?? {}).sort()).toEqual(['address_of_expression', 'attribute_pragma', 'conditional_directive', 'dereference_expression', 'pragma', 'reference_assignment_statement', 'set_reset_assignment_statement', 'short_circuit_expression'])
+    expect(Object.keys(beckhoffDialect.nodeHandlers ?? {}).sort()).toEqual(['address_of_expression', 'attribute_pragma', 'conditional_directive', 'delete_statement', 'dereference_expression', 'new_expression', 'pragma', 'reference_assignment_statement', 'set_reset_assignment_statement', 'short_circuit_expression', 'system_call'])
   })
 
   it('resolves the published Beckhoff grammar wasm', () => {

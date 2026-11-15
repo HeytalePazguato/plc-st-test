@@ -139,6 +139,30 @@ describe('run', () => {
     expect(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8')).toContain('unsupported construct address_of_expression')
   })
 
+  it('runs the TwinCAT function block lifecycle (FB_init with declaration arguments, FB_exit, FB_REINIT, __NEW, __DELETE, __SYSTEM) through the real interpreter', async () => {
+    const { code, stdout } = await cli(['run', fixture('beckhoff-lifecycle'), '--reporter', 'terminal', 'json'])
+    expect(code, stdout).toBe(0)
+    expect(JSON.parse(readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8'))).toMatchObject({ summary: { total: 8, passed: 8 } })
+  })
+
+  it('reports an unsupported __SYSTEM intrinsic, a stale pointer after __DELETE and a __DELETE of a non-allocation as runtime errors', async () => {
+    const source = (body: string): string => ['FUNCTION_BLOCK TEST_E', 'VAR', '  nVal : INT;', '  pInt : POINTER TO INT;', '  pOther : POINTER TO INT;', 'END_VAR', 'METHOD Test_A', body, 'END_METHOD', 'END_FUNCTION_BLOCK', ''].join('\n')
+    const cases: [string, string][] = [
+      ['  nVal := __SYSTEM.GetCurrentTaskTime();', '__SYSTEM.GetCurrentTaskTime is not supported by the simulator'],
+      ['  pInt := __NEW(INT);\n  pOther := pInt;\n  __DELETE(pInt);\n  pOther^ := 1;', 'invalid pointer dereference'],
+      ['  pInt := ADR(nVal);\n  __DELETE(pInt);', 'does not point at an allocation made by __NEW'],
+      ['  pInt := __NEW(INT, 99999999);', 'allocation limit exceeded'],
+    ]
+    for (const [body, message] of cases) {
+      const root = await project({ 'plc-st-test.config.yml': 'dialect: beckhoff\n', 'Tests/TEST_E.st': source(body) })
+      const { code } = await cli(['run', root, '--reporter', 'json'])
+      expect(code, body).toBe(1)
+      const raw = readFileSync(join(cwd, 'plc-st-test-results', 'results.json'), 'utf8')
+      expect(raw).toContain('"errored"')
+      expect(raw).toContain(message)
+    }
+  })
+
   it('selects TwinCAT {IF} regions from config defines and reports a failure at its original file line', async () => {
     const { code, stdout } = await cli(['run', fixture('beckhoff-conditional'), '--reporter', 'terminal', 'json'])
     expect(code, stdout).toBe(1)

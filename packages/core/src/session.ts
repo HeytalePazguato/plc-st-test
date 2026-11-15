@@ -52,7 +52,8 @@ export class MockStore {
 /** Issues stable numeric handles for slots (pointers and references hold a handle, not the slot); handle `0` is NULL. Per session, so two sessions never share pointers. */
 export class SlotTable {
   private readonly handles = new Map<Slot, number>()
-  private readonly slots: Slot[] = []
+  private readonly slots: (Slot | undefined)[] = []
+  private readonly owned = new Set<number>()
 
   handleOf(slot: Slot): number {
     let handle = this.handles.get(slot)
@@ -66,6 +67,22 @@ export class SlotTable {
 
   slotOf(handle: number): Slot | undefined {
     return this.slots[handle - 1]
+  }
+
+  /** Issue a handle for a slot the session owns (a `__NEW` allocation), which `release` can free. */
+  allocate(slot: Slot): number {
+    const handle = this.handleOf(slot)
+    this.owned.add(handle)
+    return handle
+  }
+
+  /** Free an owned handle and return its slot; `undefined` when the handle is not a live allocation. The handle stays issued but dangling, so a dereference reports an invalid pointer. */
+  release(handle: number): Slot | undefined {
+    if (!this.owned.delete(handle)) return undefined
+    const slot = this.slots[handle - 1]
+    this.slots[handle - 1] = undefined
+    if (slot !== undefined) this.handles.delete(slot)
+    return slot
   }
 }
 

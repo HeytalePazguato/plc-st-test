@@ -32,6 +32,8 @@ export interface VarEntry {
   kind: VarKind
   typeNode: Node
   initNode?: Node
+  /** The declaration's `init_arguments` argument list (TwinCAT `fb : FB_X(nParam := 5)`, `s : STRING(10)`), when the grammar provides one. */
+  initArgs?: Node
   /** Name of the FUNCTION_BLOCK this variable is an instance of, if any. */
   instanceOf?: string
 }
@@ -619,6 +621,7 @@ function collectVarBlocks(node: Node, instanceVars: VarEntry[]): VarBlock[] {
           kind,
           typeNode,
           initNode,
+          initArgs: decl.childForFieldName('init_arguments') ?? undefined,
         }
         vars.push(entry)
         if (

@@ -1,3 +1,4 @@
+import type { FbInstanceRef } from './dialect.js'
 import type { OriginalLocation } from '@plc-st/project-model'
 import type { IecValue } from './values.js'
 
@@ -23,6 +24,10 @@ export interface HostCallContext {
   readonly location: OriginalLocation
   /** Resolve a dotted variable path (e.g. `GVL.bStart`, `fbConveyor.nState`) to its slot. */
   resolvePath(path: string): Slot | undefined
+  /** Resolve a dotted variable path to the live function block instance stored there, or `undefined` when the path does not name one. */
+  instanceAt(path: string): FbInstanceRef | undefined
+  /** A runtime error located at the call site (`at <file>:<line>`); the caller throws it so the test errors with kind `runtime`. */
+  error(message: string): Error
   /** Emit a run warning attributed to the call site. */
   warn(code: string, message: string): void
 }

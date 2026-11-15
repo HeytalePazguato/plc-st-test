@@ -71,6 +71,12 @@ const evaluator: NodeEvaluator = {
     table.push(slot)
     return table.length
   },
+  allocate() {
+    throw new Error('stand-in evaluator does not allocate')
+  },
+  free() {
+    throw new Error('stand-in evaluator does not free')
+  },
   slotOf(handle, rawCtx) {
     return (rawCtx as Ctx).table[handle - 1]
   },
@@ -103,7 +109,7 @@ describe('pointers', () => {
   it('registers the handlers, the dereference lvalue and the host functions', () => {
     expect(Object.keys(beckhoffNodeHandlers)).toEqual(expect.arrayContaining(['address_of_expression', 'dereference_expression', 'reference_assignment_statement']))
     expect(Object.keys(beckhoffDialect.lvalueHandlers ?? {})).toEqual(['dereference_expression'])
-    expect(beckhoffDialect.hostFns).toEqual([sizeofHostFn, isValidRefHostFn])
+    expect(beckhoffDialect.hostFns).toEqual(expect.arrayContaining([sizeofHostFn, isValidRefHostFn]))
   })
 
   it('ADR(x) yields a POINTER handle and p^ reads and writes through it', () => {

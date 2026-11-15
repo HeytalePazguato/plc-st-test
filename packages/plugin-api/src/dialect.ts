@@ -18,6 +18,10 @@ export interface NodeEvaluator {
   handleOf(slot: Slot, ctx: unknown): number
   /** The slot behind `handle`, or `undefined` for NULL or an unknown handle. */
   slotOf(handle: number, ctx: unknown): Slot | undefined
+  /** Allocate a new variable of the type described by `typeNode` (a `_type_specifier`): a function block type becomes a live instance (FB_init-style `onInstantiate` runs), and with `count` the result is a one-dimensional array `[0..count-1]` of that type. Every scalar slot counts against the allocation limit. Returns the handle of the fresh slot, which `free` releases. */
+  allocate(typeNode: unknown, count: number | undefined, ctx: unknown): number
+  /** Release a handle returned by `allocate`: the function block instances in it are disposed (`onDispose`, children first, once each) and the handle becomes invalid, so a later dereference is a runtime error. A handle that `allocate` did not issue (or that was already freed) is a runtime error located at `node`. */
+  free(handle: number, node: unknown, ctx: unknown): void
 }
 
 /** Resolves a dialect-specific assignable node (e.g. a dereference `p^`) to its live storage slot, so it can be the target of `:=` and of call output bindings. */
@@ -43,7 +47,8 @@ export interface PreprocessWarning {
 export interface DialectHooks {
   /** Source-level preprocessing (e.g. conditional pragmas). MUST preserve the line count so source maps stay valid. */
   preprocess?(text: string, defines: Record<string, string>, warn?: (warning: PreprocessWarning) => void): string
-  onInstantiate?(inst: FbInstanceRef, ctx: HostCallContext): void
+  /** Runs once per FB instance, nested instances first. `initArgs` holds the evaluated arguments of the declaration (`fb : FB_X(nParam := 5)`), named or positional, and is empty when the declaration has none. */
+  onInstantiate?(inst: FbInstanceRef, ctx: HostCallContext, initArgs: CallArg[]): void
   onDispose?(inst: FbInstanceRef, ctx: HostCallContext): void
 }
 

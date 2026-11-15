@@ -61,6 +61,8 @@ const ctx = {
   nowNs: 30_000_000n,
   location: loc,
   resolvePath: (path: string) => (path === 'GVL.n' ? slot : undefined),
+  instanceAt: () => undefined,
+  error: (message: string) => new Error(message),
   warn: () => {},
 } satisfies HostCallContext
 

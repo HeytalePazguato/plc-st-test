@@ -12,7 +12,7 @@ import { Session } from '../src/session.js'
 
 let lang: Language
 
-const ctx: HostCallContext = { cycle: 0, nowNs: 0n, location: { file: 'test.st', line: 1, col: 1 }, resolvePath: () => undefined, warn: () => undefined }
+const ctx: HostCallContext = { cycle: 0, nowNs: 0n, location: { file: 'test.st', line: 1, col: 1 }, resolvePath: () => undefined, instanceAt: () => undefined, error: (m) => new Error(m), warn: () => undefined }
 
 const v = (type: IecType, value: number | bigint | boolean | string): IecValue => ({ kind: 'scalar', type, value })
 const pos = (...values: IecValue[]): CallArg[] => values.map((value) => ({ value }))

@@ -3,11 +3,13 @@
  *
  * - `short_circuit_expression`: `a AND_THEN b` evaluates `b` only when `a` is TRUE, `a OR_ELSE b` only when `a` is FALSE; both operands must be BOOL and the result is BOOL.
  * - `set_reset_assignment_statement`: `x S= c;` stores TRUE into `x` when `c` is TRUE and `x R= c;` stores FALSE when `c` is TRUE; otherwise `x` is left unchanged. The target is resolved before `c` is evaluated, so an invalid target always errors.
+ * - `new_expression`, `delete_statement` and `system_call` (`__NEW`, `__DELETE`, `__SYSTEM.*`) live in `intrinsics.ts`.
  * - `pragma` in statement position, with the `attribute_pragma` and `conditional_directive` it wraps: no-ops. Attributes do not change simulation semantics, and conditional regions are not evaluated (every region runs) until a preprocessing hook handles them.
  */
 
 import type { IecValue, NodeEvaluator, NodeHandler } from '@plc-st/plugin-api'
 import type { Node } from 'web-tree-sitter'
+import { deleteStatement, newExpression, systemCall } from './intrinsics.js'
 import { addressOfExpression, dereferenceExpression, referenceAssignmentStatement } from './pointers.js'
 
 const TRUE: IecValue = { kind: 'scalar', type: 'BOOL', value: true }
@@ -57,6 +59,9 @@ export const beckhoffNodeHandlers: Readonly<Record<string, NodeHandler>> = Objec
   address_of_expression: addressOfExpression,
   dereference_expression: dereferenceExpression,
   reference_assignment_statement: referenceAssignmentStatement,
+  new_expression: newExpression,
+  delete_statement: deleteStatement,
+  system_call: systemCall,
   pragma: noOp,
   attribute_pragma: noOp,
   conditional_directive: noOp,

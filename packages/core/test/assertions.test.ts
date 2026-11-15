@@ -156,7 +156,7 @@ describe('assertions from ST', () => {
 const call = (session: Session, name: string, ...vals: IecValue[]): void => {
   const def = session.hostFns.get(name)
   if (!def) throw new Error(`${name} not registered`)
-  const hc: HostCallContext = { cycle: 0, nowNs: 0n, location: { file: 'x.st', line: 1, col: 1 }, resolvePath: () => undefined, warn: () => {} }
+  const hc: HostCallContext = { cycle: 0, nowNs: 0n, location: { file: 'x.st', line: 1, col: 1 }, resolvePath: () => undefined, instanceAt: () => undefined, error: (m) => new Error(m), warn: () => {} }
   def.call(vals.map((value): CallArg => ({ value })), hc)
 }
 const sc = (type: 'INT' | 'DINT' | 'REAL' | 'LREAL' | 'BOOL' | 'STRING' | 'TIME' | 'BYTE', value: number | bigint | boolean | string): IecValue => ({ kind: 'scalar', type, value })

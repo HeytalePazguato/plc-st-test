@@ -110,6 +110,8 @@ What a host function or FB stub can see of the running session at the call site.
 - `readonly nowNs: bigint`, the simulated clock in nanoseconds.
 - `readonly location: OriginalLocation`, the original vendor-file location of the call.
 - `resolvePath(path: string): Slot | undefined`, resolves a dotted path such as `GVL.bStart` or `fbConveyor.nState` to its slot.
+- `instanceAt(path: string): FbInstanceRef | undefined`, resolves a dotted path to the live function block instance stored there (`undefined` when the path does not name one), so a host function can call methods on it (TwinCAT `FB_REINIT`).
+- `error(message: string): Error`, a runtime error located at the call site (`at <file>:<line>`). The caller throws it, and the test errors with kind `runtime`. Hooks and host functions use it where a node handler would use `NodeEvaluator.error`.
 - `warn(code: string, message: string): void`, emits a run warning attributed to the call site.
 
 ### `HostFnDef`
@@ -229,7 +231,9 @@ Core's interpreter as handed to a `NodeHandler`, so a dialect can evaluate the c
 - `error(node, ctx, message): Error`: a runtime error whose message ends with `at <file>:<line>` of `node` in the original source. The handler throws it.
 - `rawLvalue(node, ctx): Slot`: like `lvalue`, but a `REFERENCE` variable yields its own slot (the one holding the reference) instead of the variable it is bound to. `lvalue` and `evaluate` follow a bound reference automatically and raise a null-reference runtime error for an unbound one.
 - `handleOf(slot, ctx): number`: the handle the session's slot table issues for `slot`. The same slot always gets the same handle, handles start at 1 and are never reused, and `0` is NULL. Pointers and references store this handle as the `value` of a `POINTER` / `REFERENCE` scalar (`{ kind: 'scalar', type: 'POINTER', value: <handle> }`).
-- `slotOf(handle, ctx): Slot | undefined`: the slot behind a handle, or `undefined` for NULL or an unknown handle.
+- `slotOf(handle, ctx): Slot | undefined`: the slot behind a handle, or `undefined` for NULL, an unknown handle or a freed allocation.
+- `allocate(typeNode, count, ctx): number`: allocates a new variable of the type `typeNode` describes (a type specifier node) and returns the handle of its fresh slot. A function block type becomes a live instance (nested instances and `onInstantiate` included), and a `count` makes it a one-dimensional array `[0..count-1]` of that type. Every scalar slot counts against the allocation limit (`max_allocated_elements`), checked before an array is built, and an exceeded limit is a `limit` error (TwinCAT `__NEW`).
+- `free(handle, node, ctx): void`: releases a handle returned by `allocate`: the function block instances in it are disposed (`onDispose`, children first, once each) and the handle becomes dangling, so a later `slotOf` returns `undefined` and a dereference is an `invalid pointer dereference` error. A handle `allocate` did not issue, or one already freed, is a runtime error located at `node` (TwinCAT `__DELETE`).
 
 Core compares `POINTER` values with `=` and `<>` (against another pointer or an integer, so `p <> 0` tests for NULL), lets a pointer variable be assigned a pointer or `0`, and refuses every arithmetic or logical operator on a pointer with `pointer arithmetic is not supported (fidelity statement)`. A variable declared `POINTER TO`, `REFERENCE TO` or `REF_TO` starts as NULL (a constant initializer may only be `0`). A `POINTER` or `REFERENCE` is only meaningful while the session that issued its handle lives.
 
@@ -250,7 +254,7 @@ A live FUNCTION_BLOCK instance as seen by lifecycle hooks. Fields and methods:
 Optional hooks a dialect can implement. Members:
 
 - `preprocess?(text: string, defines: Record<string, string>, warn?: (warning: PreprocessWarning) => void): string`. Source-level preprocessing, for example conditional pragmas. It MUST preserve the line count so source maps stay valid. A non-fatal problem is reported through `warn` as a `PreprocessWarning` (`{ code, message, line }`, `line` 1-based in `text`), which the CLI adds to the run warnings with the original file location.
-- `onInstantiate?(inst: FbInstanceRef, ctx: HostCallContext): void`, for example TwinCAT `FB_init`.
+- `onInstantiate?(inst: FbInstanceRef, ctx: HostCallContext, initArgs: CallArg[]): void`, for example TwinCAT `FB_init`. It runs once per instance, nested instances first. `initArgs` holds the evaluated arguments of the instance's declaration (`fb : FB_X(nParam := 5)`, from the `init_arguments` field of a grammar's `variable_declaration`): `name := value` is a named argument, a bare expression a positional one, and the array is empty when the declaration has none. Core evaluates them in the scope of the declaring POU, so they may name constants and variables declared before the instance. A declaration of a non-function-block type ignores `init_arguments`, except that core reads a single positional argument on a `STRING` / `WSTRING` declaration as its length (`STRING(10)` parses as `string_type` plus `init_arguments` in the TwinCAT grammar).
 - `onDispose?(inst: FbInstanceRef, ctx: HostCallContext): void`, for example TwinCAT `FB_exit`.
 
 ### `Dialect`

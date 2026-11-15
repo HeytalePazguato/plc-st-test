@@ -9,6 +9,7 @@ import type { IecValue, NodeEvaluator, Slot } from '@plc-st/plugin-api'
 import type { EvalContext } from './context.js'
 import { evalExpression, evalLValue, evalRawLValue, fail } from './expressions.js'
 import { storeValue } from './statements.js'
+import { allocateValue, freeHandle } from './pou.js'
 
 export const NODE_EVALUATOR: NodeEvaluator = Object.freeze({
   evaluate: (node: unknown, ctx: unknown) => evalExpression(node as Node, ctx as EvalContext),
@@ -20,4 +21,8 @@ export const NODE_EVALUATOR: NodeEvaluator = Object.freeze({
   rawLvalue: (node: unknown, ctx: unknown) => evalRawLValue(node as Node, ctx as EvalContext),
   handleOf: (slot: Slot, ctx: unknown) => (ctx as EvalContext).session.slotTable.handleOf(slot),
   slotOf: (handle: number, ctx: unknown) => (ctx as EvalContext).session.slotTable.slotOf(handle),
+  allocate: (typeNode: unknown, count: number | undefined, ctx: unknown) => allocateValue(typeNode as Node, count, ctx as EvalContext),
+  free: (handle: number, node: unknown, ctx: unknown) => {
+    freeHandle(handle, ctx as EvalContext, node as Node)
+  },
 })

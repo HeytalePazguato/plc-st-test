@@ -166,6 +166,35 @@ export function instantiateFb(typeName: string, ctx: EvalContext): FbInstance {
   return instantiate(typeName, ctx, (ctx.depth ?? 0) + 1)
 }
 
+/** Allocate a variable of the type `typeNode` (a function block type becomes a live instance, `onInstantiate` included) and issue its handle; with `count`, an array `[0..count-1]` of it. The allocation limit is checked before the array is built. */
+export function allocateValue(typeNode: Node, count: number | undefined, ctx: EvalContext): number {
+  const depth = (ctx.depth ?? 0) + 1
+  const build = (): IecValue => initialValue(typeNode, ctx, depth, [])
+  if (count === undefined) return ctx.session.slotTable.allocate({ value: build() })
+  if (!Number.isInteger(count) || count < 1) throw fail(typeNode, ctx, `__NEW needs a positive element count, got ${String(count)}`)
+  const before = ctx.session.allocation
+  const first = build()
+  const perElement = Math.max(1, ctx.session.allocation - before)
+  chargeAllocation(ctx.session, (count - 1) * perElement)
+  const charged = ctx.session.allocation
+  const data = [first]
+  for (let i = 1; i < count; i++) data.push(build())
+  ctx.session.allocation = charged
+  const elemType = first.kind === 'array' ? first.elemType : first.kind === 'scalar' ? first.type : first.typeName
+  return ctx.session.slotTable.allocate({ value: { kind: 'array', elemType, dims: [[0, count - 1]], data } })
+}
+
+/** Free a handle issued by `allocateValue`: dispose the instances it holds and invalidate the handle. */
+export function freeHandle(handle: number, ctx: EvalContext, node: Node): void {
+  const slot = ctx.session.slotTable.release(handle)
+  if (slot === undefined) throw fail(node, ctx, `'${node.text}' does not point at an allocation made by __NEW (or it was already deleted)`)
+  const value = slot.value
+  for (const element of value.kind === 'array' ? value.data : [value]) {
+    const inst = fbInstanceOf(element)
+    if (inst !== undefined) disposeFb(inst, ctx)
+  }
+}
+
 /** Run `onDispose` for `inst` and its nested instances, depth-first (children before their parent); each instance is disposed at most once. */
 export function disposeFb(inst: FbInstance, ctx: EvalContext): void {
   if (inst.disposed) return
@@ -272,6 +301,8 @@ function hostContext(ctx: EvalContext, node: Node | undefined): HostCallContext 
     },
     location,
     resolvePath: (path) => resolvePath(path, ctx),
+    instanceAt: (path) => fbInstanceOf(resolvePath(path, ctx)?.value),
+    error: (message) => error(ctx, node, message),
     warn: (code, message) => {
       ctx.session.warn(code, message, location)
     },
@@ -507,15 +538,16 @@ function constEvaluator(ctx: EvalContext): ConstEvaluator {
 }
 
 /** Initial value of a variable of type `typeNode`: a new nested instance for FB types (and arrays of them), else the declared default with its initializer (`-5`, `T#5s`, `2 * 10`, a constant, an enum member, …) evaluated as a constant expression. `scope` is the frame being built, so initializers can name constants declared before them. */
-function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children: FbInstance[], scope?: Scope): IecValue {
+function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children: FbInstance[], scope?: Scope, initArgs?: Node): IecValue {
   if (scope !== undefined) ctx = { ...ctx, chain: chainOf([scope], ctx) }
   const fbType = fbTypeOf(typeNode, ctx)
   if (fbType !== undefined) {
-    const inst = instantiate(fbType, ctx, depth + 1)
+    const inst = instantiate(fbType, ctx, depth + 1, initArgs === undefined ? [] : evalInitArguments(initArgs, ctx))
     children.push(inst)
     return inst.value
   }
   const value = defaultValue(typeNode, ctx.symbols, constEvaluator(ctx), ctx.session)
+  if (initArgs !== undefined && typeNode.type === 'string_type' && value.kind === 'scalar') return withStringLength(value, initArgs, ctx)
   if (typeNode.type === 'array_type' && value.kind === 'array') {
     const elemNode = typeNode.childForFieldName('element_type')
     const elemFb = elemNode === null ? undefined : fbTypeOf(elemNode, ctx)
@@ -531,6 +563,37 @@ function initialValue(typeNode: Node, ctx: EvalContext, depth: number, children:
   return value
 }
 
+/** The evaluated arguments of a declaration's `init_arguments` (`fb : FB_X(nParam := 5)`): `name := value` becomes a named argument and a bare expression a positional one; `=>` bindings make no sense on a declaration. */
+function evalInitArguments(list: Node, ctx: EvalContext): CallArg[] {
+  const args: CallArg[] = []
+  for (const arg of list.namedChildren) {
+    if (arg.type === 'comment') continue
+    if (arg.type !== 'named_argument') {
+      args.push({ value: cloneValue(evalExpression(arg, ctx)) })
+      continue
+    }
+    if (arg.children.some((c) => c.type === '=>')) throw fail(arg, ctx, 'an output binding (=>) is not allowed in a declaration')
+    const value = arg.childForFieldName('value')
+    const name = arg.childForFieldName('name')
+    if (value === null || name === null) throw fail(arg, ctx, 'malformed declaration argument')
+    args.push({ name: name.text, value: cloneValue(evalExpression(value, ctx)) })
+  }
+  return args
+}
+
+/** The Beckhoff grammar parses `STRING(10)` as a `string_type` plus the declaration's `init_arguments`; the single positional argument is the declared length. */
+function withStringLength(value: Extract<IecValue, { kind: 'scalar' }>, list: Node, ctx: EvalContext): IecValue {
+  const args = evalInitArguments(list, ctx)
+  const length = args[0]?.value
+  if (args.length !== 1 || args[0]?.name !== undefined || length?.kind !== 'scalar' || (typeof length.value !== 'number' && typeof length.value !== 'bigint')) {
+    throw fail(list, ctx, `a string declaration takes a single length argument, got '${list.text}'`)
+  }
+  const maxLength = Number(length.value)
+  if (maxLength < 1) throw fail(list, ctx, `invalid string length ${String(maxLength)}`)
+  if (maxLength > ctx.limits.maxStringLength) throw new IecLimitError(`string length ${String(maxLength)} exceeds max_string_length=${String(ctx.limits.maxStringLength)} (${list.parent?.text ?? list.text})`)
+  return { ...value, value: String(value.value).slice(0, maxLength), maxLength }
+}
+
 /** True when `v` is an FB instance or an array of them (such VAR_TEMPs are created once, not re-created per call). */
 function holdsInstance(v: IecValue): boolean {
   return fbInstanceOf(v) !== undefined || (v.kind === 'array' && fbInstanceOf(v.data[0]) !== undefined)
@@ -544,7 +607,7 @@ function buildFrame(vars: VarEntry[], ctx: EvalContext, depth: number, fields?: 
     if (v.kind === 'inout') {
       slot = new InOutSlot(v.name)
     } else {
-      const value = initialValue(v.typeNode, ctx, depth, frame.children, frame.scope)
+      const value = initialValue(v.typeNode, ctx, depth, frame.children, frame.scope, v.initArgs)
       if (v.kind === 'temp' || fields === undefined) {
         slot = { value }
       } else {
@@ -620,7 +683,7 @@ function stubPou(def: FbStubDef): Pou {
   return { name: def.name, kind: 'functionBlock', methods: [], properties: [], varBlocks: [], implementsNames: [], baseInterfaces: [], isAbstract: false, file: '<host>', unitId: '<host>', isTest: false, actions: [] }
 }
 
-function instantiate(typeName: string, ctx: EvalContext, depth: number): FbInstance {
+function instantiate(typeName: string, ctx: EvalContext, depth: number, initArgs: CallArg[] = []): FbInstance {
   const max = ctx.limits.maxRecursionDepth
   if (depth > max) throw new IecRuntimeError(`instantiating '${typeName}' exceeded the maximum nesting depth of ${String(max)} (limits.maxRecursionDepth)`)
   const fields = new Map<string, IecValue>()
@@ -635,7 +698,7 @@ function instantiate(typeName: string, ctx: EvalContext, depth: number): FbInsta
     const frame = stubFrame(def, ctx, depth, fields)
     inst = new FbInstance(stubPou(def), frame, { kind: 'struct', typeName: def.name, fields }, ctx, { def, state: def.createState?.() })
   }
-  ctx.hooks?.onInstantiate?.(inst, hostContext(ctx, pou?.bodyNode))
+  ctx.hooks?.onInstantiate?.(inst, hostContext(ctx, pou?.bodyNode), initArgs)
   return inst
 }
 
